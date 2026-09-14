@@ -873,6 +873,9 @@ function todayThai(){
 function nextAssetCode(){
   return `COM-${String(assetSeq++).padStart(6,'0')}`;
 }
+function nextAssetCodePreview(){
+  return `COM-${String(assetSeq).padStart(6,'0')}`;
+}
 function showFormModal({title, bodyHtml, okLabel, onSubmit}){
   document.getElementById('formModalTitle').textContent = title;
   document.getElementById('formModalBody').innerHTML = bodyHtml;
@@ -917,6 +920,7 @@ function openReceiveForm(){
           <select id="recModel">${MODELS.map(m=>`<option>${m}</option>`).join('')}</select></div>
         <div class="field"><label>หมายเลข Serial Number</label><input type="text" id="recSn" placeholder="เช่น PX119-0001"></div>
       </div>
+      <div class="field"><label>หมายเลขพัสดุ (ระบบสร้างให้อัตโนมัติ)</label><input type="text" value="${nextAssetCodePreview()}" disabled class="mono"></div>
       <div class="form-row">
         <div class="field"><label>วันที่รับเข้า</label><input type="text" id="recDate" value="${todayThai()}"></div>
         <div class="field"><label>หน่วยที่รับเข้า</label>
