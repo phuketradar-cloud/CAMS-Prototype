@@ -591,6 +591,26 @@ async function uploadFileToCloud(file){
   });
   return `https://drive.google.com/thumbnail?id=${id}&sz=w1000`;
 }
+/* เบราว์เซอร์บล็อก popup ยินยอมสิทธิ์ของ Google ถ้าถูกเรียกจาก event ที่ไกลจากการคลิกของผู้ใช้เกินไป
+   (เช่น หลังเลือกไฟล์เสร็จจาก dialog เลือกไฟล์ของระบบปฏิบัติการ — popup_failed_to_open)
+   จึงต้องให้ผู้ใช้กดปุ่มนี้ตรงๆ เพื่อขอสิทธิ์ก่อนแนบไฟล์ครั้งแรก (หรือเมื่อ token หมดอายุ) */
+function driveStatusHtml(){
+  if(!DRIVE_ENABLED) return '';
+  return `<div style="margin-bottom:8px;">
+    <button type="button" class="btn btn-outline btn-sm" style="width:auto;" onclick="connectDriveNow()">🔗 เชื่อมต่อ Google Drive</button>
+    <span class="drive-connect-status" style="margin-left:8px;font-size:12px;color:var(--green-600);">${driveAccessToken?'✓ เชื่อมต่อแล้ว — แนบไฟล์ได้เลย':''}</span>
+  </div>`;
+}
+async function connectDriveNow(){
+  try{
+    await ensureDriveAuth();
+    showToast('เชื่อมต่อ Google Drive สำเร็จ — แนบไฟล์ได้เลย');
+    document.querySelectorAll('.drive-connect-status').forEach(el=>{ el.textContent = '✓ เชื่อมต่อแล้ว — แนบไฟล์ได้เลย'; });
+  }catch(e){
+    console.error('เชื่อมต่อ Google Drive ไม่สำเร็จ', e);
+    showToast('เชื่อมต่อ Google Drive ไม่สำเร็จ — ' + (e.message||''));
+  }
+}
 
 function collectState(){
   return {
@@ -1090,6 +1110,7 @@ function openReceiveForm(){
       <div class="field"><label>หมายเหตุ</label><input type="text" id="recRemark" placeholder="เช่น จัดซื้อตามสัญญาเลขที่..."></div>
       <div class="field">
         <label>เอกสารแนบ (รูปภาพ/ไฟล์ — แนบได้ไม่จำกัดจำนวน)</label>
+        ${driveStatusHtml()}
         <div class="attach-grid" id="recAttachGrid" style="margin-top:8px;"></div>
         <input type="file" id="recAttachFileInput" multiple accept="image/*,.pdf,.doc,.docx" style="display:none;" onchange="handleReceiveAttachFiles(event)">
       </div>
@@ -1139,6 +1160,12 @@ function renderReceiveAttachGrid(){
 function handleReceiveAttachFiles(event){
   const files = Array.from(event.target.files || []);
   if(!files.length) return;
+
+  if(DRIVE_ENABLED && !driveAccessToken){
+    showToast('กรุณากดปุ่ม "🔗 เชื่อมต่อ Google Drive" ก่อนแนบไฟล์ครั้งแรก');
+    event.target.value = '';
+    return;
+  }
 
   const today = todayThai();
   const by = document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน';
@@ -1620,6 +1647,7 @@ function openAsset(code){
 
     <div class="section-head"><h3>เอกสารแนบ (Attachments)</h3></div>
     <div class="attach-hint">แนบรูปภาพหรือเอกสารประกอบได้ไม่จำกัดจำนวนและไม่จำกัดขนาดไฟล์ — เช่น ภาพสภาพอุปกรณ์, ใบตรวจรับ, ใบส่งซ่อม</div>
+    ${driveStatusHtml()}
     <div class="attach-grid" id="attachGrid"></div>
 
     <div class="section-head"><h3>ประวัติ (Life History)</h3></div>
@@ -1689,6 +1717,13 @@ function renderAttachGrid(){
 function handleAttachFiles(event){
   const files = Array.from(event.target.files || []);
   if(!files.length || !currentAssetCode) return;
+
+  if(DRIVE_ENABLED && !driveAccessToken){
+    showToast('กรุณากดปุ่ม "🔗 เชื่อมต่อ Google Drive" ก่อนแนบไฟล์ครั้งแรก');
+    event.target.value = '';
+    return;
+  }
+
   const targetCode = currentAssetCode; // กันกรณีผู้ใช้ปิด/เปลี่ยนไปดูอุปกรณ์ตัวอื่นก่อนอัปโหลดเสร็จ
   if(!ATTACHMENTS[targetCode]) ATTACHMENTS[targetCode] = [];
 
