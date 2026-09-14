@@ -6,6 +6,8 @@
 <title>CAMS — ระบบควบคุมทะเบียนอุปกรณ์สื่อสาร</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --navy-900:#0b1f3a;
@@ -499,6 +501,71 @@ const USERS_LIST = [
   {user:'viewer01', name:'จ.ท. ปรีชา บุญมี', role:'VIEWER', unit:'ฝสส.', active:false},
 ];
 
+/* ============ CLOUD SYNC (Firebase Firestore) ============ */
+/* ผู้ดูแลระบบต้องสร้าง Firebase project ของหน่วยเอง (ฟรี) ที่ https://console.firebase.google.com
+   แล้วนำค่า config จาก Project settings > General > Your apps > SDK setup and configuration
+   มาวางแทนค่า placeholder ด้านล่างนี้ + เปิดใช้ Firestore Database (โหมด production หรือ test)
+   ถ้ายังไม่ตั้งค่า ระบบจะทำงานแบบ local-only เหมือนเดิม (ข้อมูลอยู่แค่ในเบราว์เซอร์เครื่องนี้ หายเมื่อ refresh) */
+const FIREBASE_CONFIG = {
+  apiKey: "YOUR_API_KEY",
+  authDomain: "YOUR_PROJECT.firebaseapp.com",
+  projectId: "YOUR_PROJECT",
+  storageBucket: "YOUR_PROJECT.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID",
+};
+const CLOUD_ENABLED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
+let cloudDb = null;
+if(CLOUD_ENABLED){
+  firebase.initializeApp(FIREBASE_CONFIG);
+  cloudDb = firebase.firestore();
+}
+function stateDocRef(){ return cloudDb.collection('cams').doc('state'); }
+
+function collectState(){
+  return {
+    assets: ASSETS, receiveDocs: RECEIVE_DOCS, issueDocs: ISSUE_DOCS, repairs: REPAIRS,
+    inspections: INSPECTIONS, borrows: BORROWS, auditLogs: AUDIT_LOGS, backups: BACKUPS,
+    usersList: USERS_LIST, statusNames: STATUS_NAMES, assetNumberHistory: ASSET_NUMBER_HISTORY,
+    repairSeq, inspectionSeq, updatedAt: new Date().toISOString(),
+  };
+}
+function applyState(data){
+  if(!data) return;
+  const replaceArr = (arr, val) => { arr.length = 0; arr.push(...(val||[])); };
+  replaceArr(ASSETS, data.assets); replaceArr(RECEIVE_DOCS, data.receiveDocs); replaceArr(ISSUE_DOCS, data.issueDocs);
+  replaceArr(REPAIRS, data.repairs); replaceArr(INSPECTIONS, data.inspections); replaceArr(BORROWS, data.borrows);
+  replaceArr(AUDIT_LOGS, data.auditLogs); replaceArr(BACKUPS, data.backups); replaceArr(USERS_LIST, data.usersList);
+  replaceArr(ASSET_NUMBER_HISTORY, data.assetNumberHistory);
+  Object.keys(STATUS_NAMES).forEach(k=>delete STATUS_NAMES[k]);
+  Object.assign(STATUS_NAMES, data.statusNames||{});
+  if(data.repairSeq) repairSeq = data.repairSeq;
+  if(data.inspectionSeq) inspectionSeq = data.inspectionSeq;
+}
+async function loadStateFromCloud(){
+  if(!CLOUD_ENABLED) return;
+  try{
+    const snap = await stateDocRef().get();
+    if(snap.exists) applyState(snap.data());
+    else await stateDocRef().set(collectState());
+    if(currentPage) goTo(currentPage);
+  }catch(e){
+    console.error('โหลดข้อมูลจาก cloud ไม่สำเร็จ', e);
+    showToast('เชื่อมต่อฐานข้อมูล cloud ไม่สำเร็จ — ทำงานแบบ local ชั่วคราว');
+  }
+}
+let _persistTimer = null;
+function persistState(){
+  if(!CLOUD_ENABLED) return;
+  clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(()=>{
+    stateDocRef().set(collectState()).catch(e=>{
+      console.error('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ', e);
+      showToast('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ');
+    });
+  }, 400);
+}
+
 const NAV = [
   {group:'ภาพรวม', items:[{id:'dashboard', label:'Dashboard', icon:'◈'}]},
   {group:'ทะเบียน', items:[{id:'registry', label:'ทะเบียนอุปกรณ์', icon:'▤'}]},
@@ -528,6 +595,7 @@ function doLogin(){
   document.getElementById('appRoot').style.display='flex';
   renderNav();
   goTo('dashboard');
+  loadStateFromCloud();
 }
 function doLogout(){
   document.getElementById('loginScreen').style.display='flex';
@@ -768,6 +836,7 @@ function returnBorrow(code){
     const a = ASSETS.find(x=>x.code===code);
     if(a) a.status = 'ASSIGNED';
     filterBorrow();
+    persistState();
     showToast(`บันทึกคืน ${code} เรียบร้อย`);
   }, {title:'บันทึกการคืนอุปกรณ์', okLabel:'ยืนยันคืน'});
 }
@@ -796,6 +865,7 @@ function openBorrowForm(){
       BORROWS.push({code, model:a.model, borrower, out:todayThai(), due, status:'BORROWED'});
       closeModal('formModal');
       goTo('borrow');
+      persistState();
       showToast(`สร้างรายการยืม ${code} ให้ ${borrower} เรียบร้อย`);
     }
   });
@@ -859,6 +929,7 @@ function undoDisposal(code){
   a.status = a._prevStatus || 'ASSIGNED';
   delete a._prevStatus;
   goTo('disposal');
+  persistState();
   showToast(`ย้อนกลับ ${code} เรียบร้อย — สถานะกลับเป็น ${a.status}`);
 }
 
@@ -871,6 +942,7 @@ function finalizeDisposal(code){
       a.status = 'DISPOSED';
       delete a._prevStatus;
       goTo('disposal');
+      persistState();
       showToast(`จำหน่าย ${code} ถาวรเรียบร้อยแล้ว`);
     },
     {title:'ยืนยันจำหน่ายถาวร', okLabel:'จำหน่ายถาวร', danger:true}
@@ -961,6 +1033,7 @@ function openReceiveForm(){
       RECEIVE_DOCS.push({doc:docNo, date, items:1, by:'OFFICER01', status:'COMPLETED'});
       closeModal('formModal');
       renderReceiveTbody();
+      persistState();
       showToast(`รับเข้าอุปกรณ์ ${code} เรียบร้อย — เอกสาร ${docNo}`);
     }
   });
@@ -1016,6 +1089,7 @@ function openIssueForm(){
       ISSUE_DOCS.push({doc:docNo, date:todayThai(), asset:code, to:toName, status:'COMPLETED'});
       closeModal('formModal');
       renderIssueTbody();
+      persistState();
       showToast(`เบิกจ่าย ${code} ให้ ${toName} เรียบร้อย — เอกสาร ${docNo}`);
     }
   });
@@ -1112,6 +1186,7 @@ function openRepairSendForm(){
       REPAIRS.push({id:repairSeq++, code, model:a.model, issue, vendor, sent:todayThai(), cost:0, returned:null, result:null, status:'SENT'});
       closeModal('formModal');
       goTo('repair');
+      persistState();
       showToast(`ส่งซ่อม ${code} เรียบร้อย`);
     }
   });
@@ -1135,6 +1210,7 @@ function openRepairReturnForm(id){
       a.status = result==='ซ่อมสำเร็จ' ? 'ASSIGNED' : 'DAMAGED';
       closeModal('formModal');
       goTo('repair');
+      persistState();
       showToast(`รับกลับ ${r.code} เรียบร้อย — ${result}`);
     }
   });
@@ -1189,6 +1265,7 @@ function openInspectionCreateForm(){
       INSPECTIONS.push({id:inspectionSeq++, name, unit, date, status:'OPEN', items});
       closeModal('formModal');
       renderInspectionTbody();
+      persistState();
       showToast(`สร้างรอบตรวจสอบ "${name}" เรียบร้อย — ${items.length} รายการ`);
     }
   });
@@ -1234,6 +1311,7 @@ function openInspectionChecklist(id){
       insp.status = 'CLOSED';
       closeModal('formModal');
       renderInspectionTbody();
+      persistState();
       showToast(`ปิดรอบตรวจสอบ "${insp.name}" — ไม่พบ ${notFound} รายการ, ชำรุด ${damaged} รายการ`);
     }
   });
@@ -1334,12 +1412,14 @@ function toggleUserActive(i){
   const u = USERS_LIST[i];
   u.active = !u.active;
   renderAdminTabBody();
+  persistState();
   showToast(`${u.active?'เปิดใช้งาน':'ระงับ'}ผู้ใช้ ${u.user} เรียบร้อย`);
 }
 function runBackupNow(){
   showConfirm('ยืนยันเรียกใช้ Backup ฐานข้อมูลทันที?', ()=>{
     BACKUPS.push({t:`${todayThai()} ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`, status:'SUCCESS', size:`${128+BACKUPS.length} MB`});
     renderAdminTabBody();
+    persistState();
     showToast('Backup สำเร็จ');
   }, {title:'เรียกใช้ Backup'});
 }
@@ -1347,6 +1427,7 @@ function saveStatusName(code){
   const val = document.getElementById(`statusName_${code}`).value.trim();
   if(!val) return;
   STATUS_NAMES[code] = val;
+  persistState();
   showToast(`บันทึกชื่อสถานะ ${code} เป็น "${val}" เรียบร้อย`);
 }
 
@@ -1425,6 +1506,7 @@ function sendToDisposal(code){
       a.status = 'DISPOSAL';
       closeModal('assetModal');
       goTo('disposal');
+      persistState();
       showToast(`ย้าย ${code} ไปยังรายการ "จำหน่าย" แล้ว — สถานะ: DISPOSAL (รอยืนยัน)`);
     },
     {title:'ส่งจำหน่ายอุปกรณ์', okLabel:'ยืนยันส่งจำหน่าย', danger:true}
