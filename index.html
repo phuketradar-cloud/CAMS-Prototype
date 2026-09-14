@@ -618,7 +618,7 @@ function renderRegistry(){
     <div class="toolbar">
       <div class="search-box" id="searchBox">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="registrySearch" placeholder="ค้นหา: Asset Code / S/N / รุ่น / ผู้ครอบครอง..." oninput="filterRegistry()" autocomplete="off">
+        <input type="text" id="registrySearch" placeholder="ค้นหา: หมายเลขพัสดุ / S/N / รุ่น / ผู้ครอบครอง..." oninput="filterRegistry()" autocomplete="off">
         <button class="clear-btn" onclick="clearRegistrySearch()">✕</button>
       </div>
       <select id="registryStatus" onchange="filterRegistry()">
@@ -639,7 +639,7 @@ function renderRegistry(){
     <div class="panel">
       <div class="panel-body" style="padding:0;">
         <table>
-          <thead><tr><th>Asset Code</th><th>รุ่น / ประเภท</th><th>S/N</th><th>สถานะ</th><th>หน่วย</th><th>ผู้ครอบครอง</th><th>สถานที่</th><th></th></tr></thead>
+          <thead><tr><th>หมายเลขพัสดุ</th><th>รุ่น / ประเภท</th><th>S/N</th><th>สถานะ</th><th>หน่วย</th><th>ผู้ครอบครอง</th><th>สถานที่</th><th></th></tr></thead>
           <tbody id="registryTbody"></tbody>
         </table>
       </div>
@@ -695,7 +695,7 @@ function renderBorrow(){
     <div class="toolbar">
       <div class="search-box" id="borrowSearchBox">
         <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="borrowSearch" placeholder="ค้นหาผู้ยืม / Asset Code..." oninput="filterBorrow()" autocomplete="off">
+        <input type="text" id="borrowSearch" placeholder="ค้นหาผู้ยืม / หมายเลขพัสดุ..." oninput="filterBorrow()" autocomplete="off">
         <button class="clear-btn" onclick="document.getElementById('borrowSearch').value='';filterBorrow();">✕</button>
       </div>
       <select id="borrowStatus" onchange="filterBorrow()">
@@ -709,7 +709,7 @@ function renderBorrow(){
     <div class="panel">
       <div class="panel-body" style="padding:0;">
         <table>
-          <thead><tr><th>Asset Code</th><th>รุ่น</th><th>ผู้ยืม</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th></th></tr></thead>
+          <thead><tr><th>หมายเลขพัสดุ</th><th>รุ่น</th><th>ผู้ยืม</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th></th></tr></thead>
           <tbody id="borrowTbody"></tbody>
         </table>
       </div>
@@ -815,7 +815,7 @@ function renderDisposal(){
       <div class="panel-head"><h3>รายการรอจำหน่าย / จำหน่ายแล้ว</h3></div>
       <div class="panel-body" style="padding:0;">
         <table>
-          <thead><tr><th>Asset Code</th><th>รุ่น / ประเภท</th><th>หน่วย / ผู้ครอบครองเดิม</th><th>สถานะก่อนจำหน่าย</th><th>สถานะปัจจุบัน</th><th></th></tr></thead>
+          <thead><tr><th>หมายเลขพัสดุ</th><th>รุ่น / ประเภท</th><th>หน่วย / ผู้ครอบครองเดิม</th><th>สถานะก่อนจำหน่าย</th><th>สถานะปัจจุบัน</th><th></th></tr></thead>
           <tbody>
             ${list.length ? list.map(a=>`
               <tr>
@@ -1014,7 +1014,7 @@ function renderCustody(){
     <div class="panel">
       <div class="panel-body" style="padding:0;">
         <table>
-          <thead><tr><th>Asset Code</th><th>รุ่น / ประเภท</th><th>S/N</th><th>สถานะ</th><th>หน่วย</th><th>ผู้ครอบครอง</th><th>สถานที่</th><th></th></tr></thead>
+          <thead><tr><th>หมายเลขพัสดุ</th><th>รุ่น / ประเภท</th><th>S/N</th><th>สถานะ</th><th>หน่วย</th><th>ผู้ครอบครอง</th><th>สถานที่</th><th></th></tr></thead>
           <tbody id="custodyTbody"></tbody>
         </table>
       </div>
@@ -1047,7 +1047,7 @@ function renderRepair(){
       <div class="panel-head"><h3>รายการส่งซ่อม / รับกลับ</h3></div>
       <div class="panel-body" style="padding:0;">
         <table>
-          <thead><tr><th>Asset Code</th><th>อาการ/ปัญหา</th><th>หน่วยซ่อม</th><th>วันที่ส่ง</th><th>ค่าใช้จ่าย</th><th>สถานะ</th><th></th></tr></thead>
+          <thead><tr><th>หมายเลขพัสดุ</th><th>อาการ/ปัญหา</th><th>หน่วยซ่อม</th><th>วันที่ส่ง</th><th>ค่าใช้จ่าย</th><th>สถานะ</th><th></th></tr></thead>
           <tbody id="repairTbody"></tbody>
         </table>
       </div>
@@ -1192,7 +1192,7 @@ function openInspectionChecklist(id){
     okLabel:'ปิดรอบตรวจสอบ',
     bodyHtml:`
       <div style="display:grid;grid-template-columns:110px 1fr 90px 130px;gap:8px;font-size:11px;color:var(--ink-soft);text-transform:uppercase;padding-bottom:6px;border-bottom:1px solid var(--line);">
-        <span>Asset Code</span><span>รุ่น</span><span>พบ/ไม่พบ</span><span>สภาพ</span>
+        <span>หมายเลขพัสดุ</span><span>รุ่น</span><span>พบ/ไม่พบ</span><span>สภาพ</span>
       </div>
       ${rows}
     `,
@@ -1342,7 +1342,7 @@ function openAsset(code){
   document.getElementById('assetModalBody').innerHTML = `
     <div class="detail-grid">
       <div>
-        <div class="kv"><b>Asset Code</b><span class="code">${a.code}</span></div>
+        <div class="kv"><b>หมายเลขพัสดุ</b><span class="code">${a.code}</span></div>
         <div class="kv"><b>รุ่น</b><span>${a.model}</span></div>
         <div class="kv"><b>ประเภท</b><span>${a.cat}</span></div>
         <div class="kv"><b>S/N</b><span class="mono">${a.sn}</span></div>
