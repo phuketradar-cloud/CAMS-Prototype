@@ -633,6 +633,13 @@ function renderRegistry(){
         <option value="">หน่วยทั้งหมด</option>
         ${units.map(u=>`<option value="${u}">${u}</option>`).join('')}
       </select>
+      <select id="registrySort" onchange="filterRegistry()">
+        <option value="newest">เรียง: ใหม่สุดก่อน</option>
+        <option value="oldest">เรียง: เก่าสุดก่อน</option>
+        <option value="code">เรียง: ตามลำดับหมายเลขพัสดุ</option>
+        <option value="cat">เรียง: ตามประเภท</option>
+        <option value="model">เรียง: ตามรุ่น</option>
+      </select>
       <div style="flex:1;"></div>
       <button class="btn btn-primary" style="width:auto;" onclick="goTo('receive')">+ รับเข้าอุปกรณ์ใหม่</button>
     </div>
@@ -675,6 +682,13 @@ function filterRegistry(){
     const matchesUnit = !unit || a.unit===unit;
     return matchesText && matchesStatus && matchesUnit;
   });
+
+  const sortBy = document.getElementById('registrySort').value;
+  if(sortBy==='newest') filtered.reverse();
+  else if(sortBy==='code') filtered.sort((a,b)=>a.code.localeCompare(b.code, 'th', {numeric:true}));
+  else if(sortBy==='cat') filtered.sort((a,b)=>a.cat.localeCompare(b.cat, 'th'));
+  else if(sortBy==='model') filtered.sort((a,b)=>a.model.localeCompare(b.model, 'th'));
+  // 'oldest' needs no re-sort — ASSETS is already in insertion (oldest-first) order
 
   const tbody = document.getElementById('registryTbody');
   tbody.innerHTML = filtered.length
