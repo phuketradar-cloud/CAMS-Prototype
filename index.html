@@ -539,6 +539,19 @@ const GOOGLE_DRIVE_CLIENT_ID = "735160159567-ogfr35o0008mt32lviob9if2dg8urnpu.ap
 const DRIVE_ENABLED = GOOGLE_DRIVE_CLIENT_ID !== "YOUR_CLIENT_ID.apps.googleusercontent.com";
 let driveAccessToken = null;
 let driveFolderId = null;
+const DRIVE_TOKEN_CACHE_KEY = 'cams_drive_token';
+/* Google ออก access token อายุ ~1 ชม. เท่านั้น และไม่ให้ refresh token กับเว็บฝั่ง client ล้วน
+   (ต้องมี backend เก็บ secret ถึงจะขอ refresh token ได้ปลอดภัย) — ที่ทำได้คือจำ token เดิมไว้ข้าม
+   การ refresh หน้าเว็บ เพื่อไม่ต้องกดเชื่อมต่อใหม่ทุกครั้งที่ปิด-เปิดหน้า ทั้งที่ token จริงยังไม่หมดอายุ */
+function restoreDriveTokenFromCache(){
+  try{
+    const raw = localStorage.getItem(DRIVE_TOKEN_CACHE_KEY);
+    if(!raw) return;
+    const {token, expiry} = JSON.parse(raw);
+    if(token && expiry && Date.now() < expiry - 60000) driveAccessToken = token;
+  }catch(e){ /* localStorage ใช้ไม่ได้ (เช่น private mode) — แค่ต้องกดเชื่อมต่อใหม่บ่อยขึ้น ไม่กระทบอย่างอื่น */ }
+}
+restoreDriveTokenFromCache();
 function ensureDriveAuth(){
   return new Promise((resolve, reject)=>{
     if(!DRIVE_ENABLED){ reject(new Error('ยังไม่ได้ตั้งค่า Google Drive Client ID')); return; }
@@ -550,6 +563,12 @@ function ensureDriveAuth(){
       callback: (resp)=>{
         if(resp.error){ reject(new Error(resp.error)); return; }
         driveAccessToken = resp.access_token;
+        try{
+          localStorage.setItem(DRIVE_TOKEN_CACHE_KEY, JSON.stringify({
+            token: resp.access_token,
+            expiry: Date.now() + (Number(resp.expires_in)||3500)*1000,
+          }));
+        }catch(e){ /* ignore */ }
         resolve(driveAccessToken);
       },
       error_callback: (err)=> reject(new Error(err.type || 'เข้าสู่ระบบ Google ไม่สำเร็จ')),
@@ -582,6 +601,12 @@ async function uploadFileToCloud(file){
   const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
     method:'POST', headers:{Authorization:`Bearer ${token}`}, body: form,
   });
+  if(res.status === 401){
+    // token ที่จำไว้ถูกเพิกถอน/หมดอายุก่อนกำหนด — ล้างทิ้งเพื่อให้กดเชื่อมต่อใหม่ได้ แทนที่จะค้างพังเงียบๆ
+    driveAccessToken = null;
+    try{ localStorage.removeItem(DRIVE_TOKEN_CACHE_KEY); }catch(e){ /* ignore */ }
+    throw new Error('การเชื่อมต่อ Google Drive หมดอายุ — กรุณากดเชื่อมต่อใหม่');
+  }
   if(!res.ok) throw new Error('อัปโหลดขึ้น Google Drive ไม่สำเร็จ');
   const {id} = await res.json();
   // แชร์แบบ "ทุกคนที่มีลิงก์ดูได้" (read-only) เพื่อให้ฝังแสดงรูปในหน้าเว็บได้โดยไม่ต้องยืนยันตัวตนซ้ำ
