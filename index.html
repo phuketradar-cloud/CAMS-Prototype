@@ -554,16 +554,12 @@ async function loadStateFromCloud(){
     showToast('เชื่อมต่อฐานข้อมูล cloud ไม่สำเร็จ — ทำงานแบบ local ชั่วคราว');
   }
 }
-let _persistTimer = null;
 function persistState(){
   if(!CLOUD_ENABLED) return;
-  clearTimeout(_persistTimer);
-  _persistTimer = setTimeout(()=>{
-    stateDocRef().set(collectState()).catch(e=>{
-      console.error('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ', e);
-      showToast('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ');
-    });
-  }, 400);
+  stateDocRef().set(collectState()).catch(e=>{
+    console.error('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ', e);
+    showToast('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ');
+  });
 }
 
 const NAV = [
