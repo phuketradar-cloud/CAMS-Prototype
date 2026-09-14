@@ -382,6 +382,21 @@
   </div>
 </div>
 
+<!-- ===================== GENERIC FORM MODAL (รับเข้า/เบิกจ่าย/ซ่อม/ตรวจสอบ/ยืม) ===================== -->
+<div class="modal-backdrop" id="formModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="formModalTitle">ฟอร์ม</h3>
+      <button class="modal-close" onclick="closeModal('formModal')">✕</button>
+    </div>
+    <div class="modal-body" id="formModalBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('formModal')">ยกเลิก</button>
+      <button class="btn btn-primary" style="width:auto;" id="formModalOkBtn">บันทึก</button>
+    </div>
+  </div>
+</div>
+
 <script>
 /* ============ MOCK DATA ============ */
 const ASSETS = [
@@ -414,6 +429,71 @@ const BORROWS = [
   {code:'COM-000002', model:'AN/PRC-152', borrower:'ร.ต. อรุณ ศรีสุข', out:'10/08/2569', due:'15/08/2569', status:'OVERDUE'},
   {code:'COM-000009', model:'GPS Tracker T400', borrower:'จ.ท. ปรีชา บุญมี', out:'16/08/2569', due:'23/08/2569', status:'BORROWED'},
   {code:'COM-000011', model:'PRC-112G', borrower:'จ.อ. วีระ พงษ์ทอง', out:'01/08/2569', due:'08/08/2569', status:'BORROWED'},
+];
+
+/* ชื่อสถานะที่แสดงผล — แก้ไขได้จากหน้า ผู้ดูแลระบบ > ตั้งค่าสถานะ โดยไม่กระทบ logic (asset_statuses.name_th) */
+const STATUS_NAMES = {
+  IN_STOCK:'อยู่ในคลัง', ASSIGNED:'จ่าย/ครอบครอง', BORROWED:'ยืม', REPAIR:'ส่งซ่อม',
+  DAMAGED:'ชำรุด', LOST:'สูญหาย', INSPECTION:'รอตรวจสอบ', DISPOSAL:'รอจำหน่าย', DISPOSED:'จำหน่ายแล้ว',
+};
+
+const UNITS = ['ศคว.', 'ศคว.2', 'ฝสส.', 'คลังกลาง'];
+const LOCATIONS_BY_UNIT = {'ศคว.':'ห้องสื่อสาร ชั้น 2', 'ศคว.2':'อาคาร 2 ชั้น 1', 'ฝสส.':'ห้องพัสดุ', 'คลังกลาง':'คลังอุปกรณ์ ชั้น 1'};
+const PERSONNEL = [
+  {name:'จ.อ. สมชาย ใจดี', unit:'ศคว.'},
+  {name:'ร.ต. อรุณ ศรีสุข', unit:'ศคว.'},
+  {name:'จ.อ. วีระ พงษ์ทอง', unit:'ศคว.2'},
+  {name:'จ.ท. ปรีชา บุญมี', unit:'ฝสส.'},
+];
+const APPROVERS = ['น.ท. ประเสริฐ วงศ์สุวรรณ (APPROVER)', 'น.ต. สุรชัย ทองดี (APPROVER)'];
+const MODELS = ['PRC-112G', 'AN/PRC-152', 'HF-2000', 'GPS Tracker T400', 'Battery Pack BB-390'];
+let assetSeq = 7;
+
+const RECEIVE_DOCS = [
+  {doc:'REC-2567-000045', date:'12/03/67', items:1, by:'ADMIN01', status:'COMPLETED'},
+];
+const ISSUE_DOCS = [
+  {doc:'ISS-2567-000031', date:'20/03/67', asset:'COM-000001', to:'จ.อ. สมชาย ใจดี', status:'COMPLETED'},
+];
+const REPAIRS = [
+  {id:1, code:'COM-000003', model:'HF-2000', issue:'จอแสดงผลไม่ติด', vendor:'ศูนย์ซ่อมบำรุง', sent:'02/07/69', cost:0, returned:null, result:null, status:'SENT'},
+];
+let repairSeq = 2;
+
+const INSPECTIONS = [
+  {id:1, name:'ตรวจสอบอุปกรณ์ประจำปี 2569', unit:'ศคว.', date:'15/08/69', status:'CLOSED', items:[
+    {code:'COM-000001', found:true, condition:'สภาพดี'},
+    {code:'COM-000006', found:true, condition:'สภาพดี'},
+  ]},
+];
+let inspectionSeq = 2;
+
+const REPORT_TYPES = [
+  {id:'registry', name:'ทะเบียนอุปกรณ์ (ตามหน่วย/ผู้ครอบครอง)'},
+  {id:'receive', name:'รายงานรับเข้า'}, {id:'issue', name:'รายงานเบิกจ่าย'},
+  {id:'transfer', name:'รายงานโอน'}, {id:'borrow', name:'รายงานยืม-คืน'},
+  {id:'repair', name:'รายงานส่งซ่อม'}, {id:'damaged', name:'รายงานอุปกรณ์ชำรุด'},
+  {id:'inspection', name:'รายงานผลการตรวจสอบ'}, {id:'lost', name:'รายงานอุปกรณ์สูญหาย'},
+  {id:'disposal-pending', name:'รายงานรอจำหน่าย'}, {id:'disposal', name:'รายงานจำหน่ายแล้ว'},
+  {id:'asset-history', name:'รายงานประวัติ Asset (Life History)'},
+];
+
+const AUDIT_LOGS = [
+  {t:'18/08/69 09:12', user:'OFFICER01', action:'TRANSFER', recordId:'COM-000001', detail:'โอนจาก จ.อ. สมชาย ใจดี → จ.อ. วีระ พงษ์ทอง'},
+  {t:'17/08/69 14:03', user:'OFFICER01', action:'REPAIR_SEND', recordId:'COM-000003', detail:'ส่งซ่อม: จอแสดงผลไม่ติด'},
+  {t:'16/08/69 10:47', user:'OFFICER01', action:'BORROW', recordId:'COM-000009', detail:'ยืมโดย จ.ท. ปรีชา บุญมี'},
+];
+const BACKUPS = [
+  {t:'16/08/69 02:00', status:'SUCCESS', size:'126 MB'},
+  {t:'17/08/69 02:00', status:'SUCCESS', size:'127 MB'},
+  {t:'18/08/69 02:00', status:'SUCCESS', size:'128 MB'},
+];
+const USERS_LIST = [
+  {user:'admin01', name:'จ.ส.อ. ประยุทธ มั่นคง', role:'SUPER_ADMIN', unit:'-', active:true},
+  {user:'officer01', name:'จ.อ. สมชาย ใจดี', role:'OFFICER', unit:'ศคว.', active:true},
+  {user:'approver01', name:'น.ท. ประเสริฐ วงศ์สุวรรณ', role:'APPROVER', unit:'ศคว.', active:true},
+  {user:'unitadmin01', name:'ร.ต. อรุณ ศรีสุข', role:'UNIT_ADMIN', unit:'ศคว.2', active:true},
+  {user:'viewer01', name:'จ.ท. ปรีชา บุญมี', role:'VIEWER', unit:'ฝสส.', active:false},
 ];
 
 const NAV = [
@@ -475,10 +555,19 @@ function goTo(page){
   document.getElementById('pageTitle').textContent = titles[page][0];
   document.getElementById('pageCrumb').textContent = titles[page][1];
   const renderers = {
-    dashboard:renderDashboard, registry:renderRegistry, borrow:renderBorrow, transfer:renderTransferPage, disposal:renderDisposal,
+    dashboard:renderDashboard, registry:renderRegistry, receive:renderReceive, issue:renderIssue,
+    custody:renderCustody, transfer:renderTransferPage, borrow:renderBorrow, repair:renderRepair,
+    inspection:renderInspection, disposal:renderDisposal, reports:renderReports, admin:renderAdmin,
   };
-  document.getElementById('pageContent').innerHTML = (renderers[page]||renderPlaceholder)(page);
+  document.getElementById('pageContent').innerHTML = renderers[page](page);
   if(page==='registry') filterRegistry();
+  if(page==='borrow') filterBorrow();
+  if(page==='custody') filterCustody();
+  if(page==='receive') renderReceiveTbody();
+  if(page==='issue') renderIssueTbody();
+  if(page==='repair') renderRepairTbody();
+  if(page==='inspection') renderInspectionTbody();
+  if(page==='admin') renderAdminTabBody();
 }
 
 /* ============ DASHBOARD ============ */
@@ -555,7 +644,7 @@ function assetRowHtml(a){
       <td class="code">${a.code}</td>
       <td>${a.model}<br><span style="color:var(--ink-soft);font-size:11.5px;">${a.cat}</span></td>
       <td class="mono">${a.sn}</td>
-      <td><span class="tag tag-${a.status}">${a.status}</span></td>
+      <td><span class="tag tag-${a.status}">${STATUS_NAMES[a.status]||a.status}</span></td>
       <td>${a.unit}</td>
       <td>${a.holder}</td>
       <td>${a.loc}</td>
@@ -596,28 +685,97 @@ function clearRegistrySearch(){
 function renderBorrow(){
   return `
     <div class="toolbar">
-      <input type="text" placeholder="ค้นหาผู้ยืม / Asset Code...">
-      <select><option>สถานะทั้งหมด</option><option>BORROWED</option><option>OVERDUE</option><option>RETURNED</option></select>
+      <div class="search-box" id="borrowSearchBox">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="borrowSearch" placeholder="ค้นหาผู้ยืม / Asset Code..." oninput="filterBorrow()" autocomplete="off">
+        <button class="clear-btn" onclick="document.getElementById('borrowSearch').value='';filterBorrow();">✕</button>
+      </div>
+      <select id="borrowStatus" onchange="filterBorrow()">
+        <option value="">สถานะทั้งหมด</option><option value="BORROWED">BORROWED</option>
+        <option value="OVERDUE">OVERDUE</option><option value="RETURNED">RETURNED</option>
+      </select>
       <div style="flex:1;"></div>
-      <button class="btn btn-primary" style="width:auto;">+ สร้างรายการยืม</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="openBorrowForm()">+ สร้างรายการยืม</button>
     </div>
+    <div class="result-count" id="borrowCount"></div>
     <div class="panel">
       <div class="panel-body" style="padding:0;">
         <table>
           <thead><tr><th>Asset Code</th><th>รุ่น</th><th>ผู้ยืม</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th></th></tr></thead>
-          <tbody>
-            ${BORROWS.map(b=>`
-              <tr>
-                <td class="code">${b.code}</td><td>${b.model}</td><td>${b.borrower}</td>
-                <td>${b.out}</td><td>${b.due}</td>
-                <td><span class="tag tag-${b.status}">${b.status}</span></td>
-                <td><button class="link-btn">บันทึกคืน →</button></td>
-              </tr>`).join('')}
-          </tbody>
+          <tbody id="borrowTbody"></tbody>
         </table>
       </div>
     </div>
     <div class="demo-note" style="max-width:520px;">กฎระบบ: ถ้า <span class="mono">due_date &lt; วันนี้</span> และยังไม่คืน ระบบจะเปลี่ยนสถานะเป็น <b>OVERDUE</b> และแจ้งเตือนบน Dashboard อัตโนมัติ</div>`;
+}
+
+function borrowRowHtml(b){
+  return `
+    <tr>
+      <td class="code">${b.code}</td><td>${b.model}</td><td>${b.borrower}</td>
+      <td>${b.out}</td><td>${b.due}</td>
+      <td><span class="tag tag-${b.status}">${b.status}</span></td>
+      <td>${b.status!=='RETURNED'
+        ? `<button class="link-btn" onclick="returnBorrow('${b.code}')">บันทึกคืน →</button>`
+        : `<span style="color:var(--ink-soft);font-size:12px;">คืนแล้ว ${b.returnDate||''}</span>`}</td>
+    </tr>`;
+}
+
+function filterBorrow(){
+  const q = (document.getElementById('borrowSearch').value||'').trim().toLowerCase();
+  const status = document.getElementById('borrowStatus').value;
+  document.getElementById('borrowSearchBox').classList.toggle('has-text', q.length>0);
+  const filtered = BORROWS.filter(b=>{
+    const matchesText = !q || (b.code+' '+b.borrower).toLowerCase().includes(q);
+    const matchesStatus = !status || b.status===status;
+    return matchesText && matchesStatus;
+  });
+  document.getElementById('borrowTbody').innerHTML = filtered.length
+    ? filtered.map(borrowRowHtml).join('')
+    : `<tr class="empty-row"><td colspan="7">ไม่พบรายการที่ตรงกับเงื่อนไขการค้นหา</td></tr>`;
+  document.getElementById('borrowCount').textContent = `พบ ${filtered.length} จาก ${BORROWS.length} รายการ`;
+}
+
+function returnBorrow(code){
+  const b = BORROWS.find(x=>x.code===code && x.status!=='RETURNED');
+  if(!b) return;
+  showConfirm(`ยืนยันบันทึกคืน ${code}?`, ()=>{
+    b.status = 'RETURNED';
+    b.returnDate = todayThai();
+    const a = ASSETS.find(x=>x.code===code);
+    if(a) a.status = 'ASSIGNED';
+    filterBorrow();
+    showToast(`บันทึกคืน ${code} เรียบร้อย`);
+  }, {title:'บันทึกการคืนอุปกรณ์', okLabel:'ยืนยันคืน'});
+}
+
+function openBorrowForm(){
+  const available = ASSETS.filter(a=>a.status==='ASSIGNED');
+  if(!available.length){ showToast('ไม่มีอุปกรณ์สถานะ ASSIGNED ให้ยืมได้ในขณะนี้'); return; }
+  showFormModal({
+    title:'สร้างรายการยืมอุปกรณ์ (BORROW)',
+    okLabel:'ยืนยันการยืม',
+    bodyHtml:`
+      <div class="field"><label>อุปกรณ์</label>
+        <select id="brwAsset">${available.map(a=>`<option value="${a.code}">${a.code} · ${a.model}</option>`).join('')}</select></div>
+      <div class="form-row">
+        <div class="field"><label>ผู้ยืม</label>
+          <select id="brwBorrower">${PERSONNEL.map(p=>`<option>${p.name}</option>`).join('')}</select></div>
+        <div class="field"><label>กำหนดคืน</label><input type="text" id="brwDue" placeholder="เช่น 25/08/2569"></div>
+      </div>
+    `,
+    onSubmit:()=>{
+      const code = document.getElementById('brwAsset').value;
+      const borrower = document.getElementById('brwBorrower').value;
+      const due = document.getElementById('brwDue').value.trim() || '-';
+      const a = ASSETS.find(x=>x.code===code);
+      a.status = 'BORROWED';
+      BORROWS.push({code, model:a.model, borrower, out:todayThai(), due, status:'BORROWED'});
+      closeModal('formModal');
+      goTo('borrow');
+      showToast(`สร้างรายการยืม ${code} ให้ ${borrower} เรียบร้อย`);
+    }
+  });
 }
 
 /* ============ TRANSFER PAGE ============ */
@@ -656,8 +814,8 @@ function renderDisposal(){
                 <td class="code">${a.code}</td>
                 <td>${a.model}<br><span style="color:var(--ink-soft);font-size:11.5px;">${a.cat}</span></td>
                 <td>${a.unit} / ${a.holder}</td>
-                <td>${a._prevStatus ? `<span class="tag tag-${a._prevStatus}">${a._prevStatus}</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
-                <td><span class="tag tag-${a.status}">${a.status}</span></td>
+                <td>${a._prevStatus ? `<span class="tag tag-${a._prevStatus}">${STATUS_NAMES[a._prevStatus]||a._prevStatus}</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+                <td><span class="tag tag-${a.status}">${STATUS_NAMES[a.status]||a.status}</span></td>
                 <td>
                   ${a.status==='DISPOSAL' ? `
                     <button class="link-btn" onclick="undoDisposal('${a.code}')">← ย้อนกลับ</button>
@@ -695,26 +853,463 @@ function finalizeDisposal(code){
     {title:'ยืนยันจำหน่ายถาวร', okLabel:'จำหน่ายถาวร', danger:true}
   );
 }
-const PLACEHOLDER_INFO = {
-  receive:{icon:'↧', desc:'สร้างใบรับ → เพิ่มรายการ → ระบุ S/N → ตรวจรับ → สร้าง Asset Code → สร้าง QR → status = IN_STOCK'},
-  issue:{icon:'↥', desc:'สร้างใบเบิก → เลือกอุปกรณ์ → เสนอ → อนุมัติ → จ่าย → ผู้รับยืนยัน → COMPLETED (IN_STOCK → ASSIGNED)'},
-  custody:{icon:'◐', desc:'ค้นหา "อุปกรณ์ที่อยู่กับบุคคลนี้ทั้งหมด" หรือ "อุปกรณ์ของหน่วยนี้ทั้งหมด" แบบ real-time'},
-  repair:{icon:'✚', desc:'พบชำรุด → แจ้งซ่อม → ตรวจสอบ → อนุมัติ → ส่งซ่อม → ซ่อม → รับกลับ → ตรวจรับ → กลับใช้งาน'},
-  inspection:{icon:'✓', desc:'สร้างรอบตรวจ → ตรวจแต่ละรายการ (พบ/สภาพ/สถานที่/ผู้ครอบครอง) → สรุปยอดอัตโนมัติ'},
-  reports:{icon:'▦', desc:'ทะเบียนอุปกรณ์, รายงานตามหน่วย/ผู้ครอบครอง, รับเข้า, เบิกจ่าย, โอน, ยืม-คืน, ซ่อม, ชำรุด, ตรวจสอบ, สูญหาย, จำหน่าย, ประวัติ Asset — Export PDF/Excel'},
-  admin:{icon:'⚙', desc:'User / Role / Permission, หน่วย, สถานที่, Audit Log (WHO+WHEN+WHAT+WHY+DOCUMENT), Backup History, ตั้งค่าชื่อสถานะ'},
-};
-function renderPlaceholder(page){
-  const info = PLACEHOLDER_INFO[page] || {icon:'▤', desc:''};
+/* ============ SHARED HELPERS ============ */
+function todayThai(){
+  return new Date().toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'2-digit'});
+}
+function nextAssetCode(){
+  return `COM-${String(assetSeq++).padStart(6,'0')}`;
+}
+function showFormModal({title, bodyHtml, okLabel, onSubmit}){
+  document.getElementById('formModalTitle').textContent = title;
+  document.getElementById('formModalBody').innerHTML = bodyHtml;
+  const okBtn = document.getElementById('formModalOkBtn');
+  okBtn.textContent = okLabel || 'บันทึก';
+  okBtn.onclick = onSubmit;
+  openModal('formModal');
+}
+
+/* ============ รับเข้า (RECEIVE) ============ */
+function renderReceive(){
   return `
+    <div class="toolbar">
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" style="width:auto;" onclick="openReceiveForm()">+ สร้างใบรับอุปกรณ์</button>
+    </div>
     <div class="panel">
-      <div class="placeholder">
-        <div class="big">${info.icon}</div>
-        <h4>โมดูลนี้อยู่ในขอบเขต V1 — รอ Implement ตาม Workflow ที่ล็อกไว้แล้ว</h4>
-        <p style="max-width:520px;margin:0 auto;color:var(--ink-soft);">${info.desc}</p>
-        <div class="demo-note" style="display:inline-block;text-align:left;margin-top:16px;">ดู Workflow และ API endpoint ฉบับเต็มในเอกสาร <b>CAMS-System-Design.md</b></div>
+      <div class="panel-head"><h3>รายการรับเข้าล่าสุด</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>เอกสาร</th><th>วันที่</th><th>จำนวนรายการ</th><th>ผู้บันทึก</th><th>สถานะ</th></tr></thead>
+          <tbody id="receiveTbody"></tbody>
+        </table>
       </div>
     </div>`;
+}
+function renderReceiveTbody(){
+  const tbody = document.getElementById('receiveTbody');
+  if(!tbody) return;
+  tbody.innerHTML = RECEIVE_DOCS.length ? RECEIVE_DOCS.slice().reverse().map(d=>`
+    <tr><td class="code">${d.doc}</td><td>${d.date}</td><td>${d.items}</td><td>${d.by}</td>
+    <td><span class="tag tag-ASSIGNED">${d.status}</span></td></tr>`).join('')
+    : `<tr class="empty-row"><td colspan="5">ยังไม่มีรายการรับเข้า</td></tr>`;
+}
+function openReceiveForm(){
+  showFormModal({
+    title:'สร้างใบรับอุปกรณ์ใหม่ (RECEIVE)',
+    okLabel:'บันทึกรับเข้า',
+    bodyHtml:`
+      <div class="form-row">
+        <div class="field"><label>รุ่นอุปกรณ์</label>
+          <select id="recModel">${MODELS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+        <div class="field"><label>หมายเลข Serial Number</label><input type="text" id="recSn" placeholder="เช่น PX119-0001"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>วันที่รับเข้า</label><input type="text" id="recDate" value="${todayThai()}"></div>
+        <div class="field"><label>หน่วยที่รับเข้า</label>
+          <select id="recUnit">${UNITS.map(u=>`<option>${u}</option>`).join('')}</select></div>
+      </div>
+      <div class="field"><label>หมายเหตุ</label><input type="text" id="recRemark" placeholder="เช่น จัดซื้อตามสัญญาเลขที่..."></div>
+    `,
+    onSubmit:()=>{
+      const sn = document.getElementById('recSn').value.trim();
+      if(!sn){ showToast('กรุณาระบุหมายเลข Serial Number'); return; }
+      const model = document.getElementById('recModel').value;
+      const unit = document.getElementById('recUnit').value;
+      const date = document.getElementById('recDate').value;
+      const code = nextAssetCode();
+      ASSETS.push({code, model, cat:'อุปกรณ์รับเข้าใหม่', sn, status:'IN_STOCK', unit, holder:'-', loc:LOCATIONS_BY_UNIT[unit]||'คลังอุปกรณ์', received:date, warranty:'-'});
+      const docNo = `REC-2569-${String(RECEIVE_DOCS.length+45).padStart(6,'0')}`;
+      RECEIVE_DOCS.push({doc:docNo, date, items:1, by:'OFFICER01', status:'COMPLETED'});
+      closeModal('formModal');
+      renderReceiveTbody();
+      showToast(`รับเข้าอุปกรณ์ ${code} เรียบร้อย — เอกสาร ${docNo}`);
+    }
+  });
+}
+
+/* ============ เบิกจ่าย (ISSUE) ============ */
+function renderIssue(){
+  return `
+    <div class="toolbar">
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" style="width:auto;" onclick="openIssueForm()">+ สร้างใบเบิกจ่าย</button>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>รายการเบิกจ่ายล่าสุด</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>เอกสาร</th><th>วันที่</th><th>อุปกรณ์</th><th>ผู้รับ</th><th>สถานะ</th></tr></thead>
+          <tbody id="issueTbody"></tbody>
+        </table>
+      </div>
+    </div>`;
+}
+function renderIssueTbody(){
+  const tbody = document.getElementById('issueTbody');
+  if(!tbody) return;
+  tbody.innerHTML = ISSUE_DOCS.length ? ISSUE_DOCS.slice().reverse().map(d=>`
+    <tr><td class="code">${d.doc}</td><td>${d.date}</td><td class="code">${d.asset}</td><td>${d.to}</td>
+    <td><span class="tag tag-ASSIGNED">${d.status}</span></td></tr>`).join('')
+    : `<tr class="empty-row"><td colspan="5">ยังไม่มีรายการเบิกจ่าย</td></tr>`;
+}
+function openIssueForm(){
+  const available = ASSETS.filter(a=>a.status==='IN_STOCK');
+  if(!available.length){ showToast('ไม่มีอุปกรณ์ในคลัง (IN_STOCK) ให้เบิกจ่ายในขณะนี้'); return; }
+  showFormModal({
+    title:'สร้างใบเบิกจ่ายอุปกรณ์ (ISSUE)',
+    okLabel:'ยืนยันเบิกจ่าย',
+    bodyHtml:`
+      <div class="field"><label>อุปกรณ์ (เฉพาะที่อยู่ในคลัง)</label>
+        <select id="issAsset">${available.map(a=>`<option value="${a.code}">${a.code} · ${a.model} (${a.sn})</option>`).join('')}</select></div>
+      <div class="form-row">
+        <div class="field"><label>ผู้รับ</label>
+          <select id="issTo">${PERSONNEL.map(p=>`<option value="${p.name}|${p.unit}">${p.name} / ${p.unit}</option>`).join('')}</select></div>
+        <div class="field"><label>ผู้อนุมัติ</label>
+          <select id="issApprover">${APPROVERS.map(a=>`<option>${a}</option>`).join('')}</select></div>
+      </div>
+    `,
+    onSubmit:()=>{
+      const code = document.getElementById('issAsset').value;
+      const [toName, toUnit] = document.getElementById('issTo').value.split('|');
+      const a = ASSETS.find(x=>x.code===code);
+      a.status = 'ASSIGNED'; a.holder = toName; a.unit = toUnit;
+      const docNo = `ISS-2569-${String(ISSUE_DOCS.length+31).padStart(6,'0')}`;
+      ISSUE_DOCS.push({doc:docNo, date:todayThai(), asset:code, to:toName, status:'COMPLETED'});
+      closeModal('formModal');
+      renderIssueTbody();
+      showToast(`เบิกจ่าย ${code} ให้ ${toName} เรียบร้อย — เอกสาร ${docNo}`);
+    }
+  });
+}
+
+/* ============ ครอบครอง (CUSTODY) ============ */
+function renderCustody(){
+  return `
+    <div class="toolbar">
+      <select id="custodyMode" onchange="filterCustody()">
+        <option value="holder">ค้นหาตามผู้ครอบครอง</option>
+        <option value="unit">ค้นหาตามหน่วย</option>
+      </select>
+      <div class="search-box" id="custodySearchBox" style="flex:1;">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="custodySearch" placeholder="พิมพ์ชื่อผู้ครอบครองหรือหน่วย..." oninput="filterCustody()" autocomplete="off">
+        <button class="clear-btn" onclick="document.getElementById('custodySearch').value='';filterCustody();">✕</button>
+      </div>
+    </div>
+    <div class="result-count" id="custodyCount"></div>
+    <div class="panel">
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>Asset Code</th><th>รุ่น / ประเภท</th><th>S/N</th><th>สถานะ</th><th>หน่วย</th><th>ผู้ครอบครอง</th><th>สถานที่</th><th></th></tr></thead>
+          <tbody id="custodyTbody"></tbody>
+        </table>
+      </div>
+    </div>`;
+}
+function filterCustody(){
+  const mode = document.getElementById('custodyMode').value;
+  const q = (document.getElementById('custodySearch').value||'').trim().toLowerCase();
+  document.getElementById('custodySearchBox').classList.toggle('has-text', q.length>0);
+  const filtered = ASSETS.filter(a=>{
+    if(a.holder==='-') return false;
+    if(!q) return true;
+    return mode==='holder' ? a.holder.toLowerCase().includes(q) : a.unit.toLowerCase().includes(q);
+  });
+  document.getElementById('custodyTbody').innerHTML = filtered.length
+    ? filtered.map(assetRowHtml).join('')
+    : `<tr class="empty-row"><td colspan="8">ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไข</td></tr>`;
+  document.getElementById('custodyCount').textContent = `พบ ${filtered.length} รายการ`;
+}
+
+/* ============ ซ่อม (REPAIR) ============ */
+function renderRepair(){
+  const sendable = ASSETS.filter(a=>a.status==='ASSIGNED'||a.status==='DAMAGED');
+  return `
+    <div class="toolbar">
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" style="width:auto;" onclick="openRepairSendForm()" ${sendable.length?'':'disabled'}>+ ส่งซ่อมอุปกรณ์</button>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>รายการส่งซ่อม / รับกลับ</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>Asset Code</th><th>อาการ/ปัญหา</th><th>หน่วยซ่อม</th><th>วันที่ส่ง</th><th>ค่าใช้จ่าย</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody id="repairTbody"></tbody>
+        </table>
+      </div>
+    </div>`;
+}
+function renderRepairTbody(){
+  const tbody = document.getElementById('repairTbody');
+  if(!tbody) return;
+  tbody.innerHTML = REPAIRS.length ? REPAIRS.slice().reverse().map(r=>`
+    <tr>
+      <td class="code">${r.code}</td><td>${r.issue}</td><td>${r.vendor}</td><td>${r.sent}</td>
+      <td class="mono">${r.cost?r.cost.toLocaleString()+' บาท':'-'}</td>
+      <td><span class="tag tag-${r.status==='RETURNED'?(r.result==='ซ่อมสำเร็จ'?'ASSIGNED':'DAMAGED'):'REPAIR'}">${r.status}</span></td>
+      <td>${r.status==='SENT'||r.status==='IN_PROGRESS'
+        ? `<button class="link-btn" onclick="openRepairReturnForm(${r.id})">รับกลับ →</button>`
+        : `<span style="color:var(--ink-soft);font-size:12px;">${r.result||''}</span>`}</td>
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="7">ยังไม่มีรายการส่งซ่อม</td></tr>`;
+}
+function openRepairSendForm(){
+  const sendable = ASSETS.filter(a=>a.status==='ASSIGNED'||a.status==='DAMAGED');
+  if(!sendable.length){ showToast('ไม่มีอุปกรณ์ที่สามารถส่งซ่อมได้ในขณะนี้'); return; }
+  showFormModal({
+    title:'ส่งซ่อมอุปกรณ์ (REPAIR_SEND)',
+    okLabel:'ยืนยันส่งซ่อม',
+    bodyHtml:`
+      <div class="field"><label>อุปกรณ์</label>
+        <select id="repAsset">${sendable.map(a=>`<option value="${a.code}">${a.code} · ${a.model}</option>`).join('')}</select></div>
+      <div class="field"><label>อาการ / ปัญหาที่พบ</label><input type="text" id="repIssue" placeholder="เช่น จอแสดงผลไม่ติด"></div>
+      <div class="field"><label>หน่วย/ศูนย์ซ่อมบำรุง</label><input type="text" id="repVendor" value="ศูนย์ซ่อมบำรุง"></div>
+    `,
+    onSubmit:()=>{
+      const code = document.getElementById('repAsset').value;
+      const issue = document.getElementById('repIssue').value.trim() || 'ไม่ระบุอาการ';
+      const vendor = document.getElementById('repVendor').value.trim() || 'ศูนย์ซ่อมบำรุง';
+      const a = ASSETS.find(x=>x.code===code);
+      a.status = 'REPAIR';
+      REPAIRS.push({id:repairSeq++, code, model:a.model, issue, vendor, sent:todayThai(), cost:0, returned:null, result:null, status:'SENT'});
+      closeModal('formModal');
+      goTo('repair');
+      showToast(`ส่งซ่อม ${code} เรียบร้อย`);
+    }
+  });
+}
+function openRepairReturnForm(id){
+  const r = REPAIRS.find(x=>x.id===id);
+  if(!r) return;
+  showFormModal({
+    title:`รับกลับจากซ่อม — ${r.code}`,
+    okLabel:'บันทึกรับกลับ',
+    bodyHtml:`
+      <div class="field"><label>ผลการซ่อม</label>
+        <select id="repResult"><option>ซ่อมสำเร็จ</option><option>ซ่อมไม่ได้</option></select></div>
+      <div class="field"><label>ค่าใช้จ่าย (บาท)</label><input type="text" id="repCost" value="0"></div>
+    `,
+    onSubmit:()=>{
+      const result = document.getElementById('repResult').value;
+      const cost = Number(document.getElementById('repCost').value) || 0;
+      r.result = result; r.cost = cost; r.returned = todayThai(); r.status = 'RETURNED';
+      const a = ASSETS.find(x=>x.code===r.code);
+      a.status = result==='ซ่อมสำเร็จ' ? 'ASSIGNED' : 'DAMAGED';
+      closeModal('formModal');
+      goTo('repair');
+      showToast(`รับกลับ ${r.code} เรียบร้อย — ${result}`);
+    }
+  });
+}
+
+/* ============ ตรวจสอบ (INSPECTION) ============ */
+function renderInspection(){
+  return `
+    <div class="toolbar">
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" style="width:auto;" onclick="openInspectionCreateForm()">+ สร้างรอบตรวจสอบ</button>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>รอบตรวจสอบอุปกรณ์</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>ชื่อรอบตรวจสอบ</th><th>หน่วย</th><th>วันที่</th><th>จำนวนรายการ</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody id="inspectionTbody"></tbody>
+        </table>
+      </div>
+    </div>`;
+}
+function renderInspectionTbody(){
+  const tbody = document.getElementById('inspectionTbody');
+  if(!tbody) return;
+  tbody.innerHTML = INSPECTIONS.length ? INSPECTIONS.slice().reverse().map(insp=>`
+    <tr>
+      <td>${insp.name}</td><td>${insp.unit}</td><td>${insp.date}</td><td>${insp.items.length}</td>
+      <td><span class="tag tag-${insp.status==='OPEN'?'INSPECTION':'IN_STOCK'}">${insp.status}</span></td>
+      <td>${insp.status==='OPEN'
+        ? `<button class="link-btn" onclick="openInspectionChecklist(${insp.id})">ดำเนินการตรวจ →</button>`
+        : `<span style="color:var(--ink-soft);font-size:12px;">ปิดรอบแล้ว</span>`}</td>
+    </tr>`).join('') : `<tr class="empty-row"><td colspan="6">ยังไม่มีรอบตรวจสอบ</td></tr>`;
+}
+function openInspectionCreateForm(){
+  showFormModal({
+    title:'สร้างรอบตรวจสอบอุปกรณ์ใหม่',
+    okLabel:'สร้างรอบตรวจสอบ',
+    bodyHtml:`
+      <div class="field"><label>ชื่อรอบตรวจสอบ</label><input type="text" id="inspName" value="ตรวจสอบอุปกรณ์ประจำปี 2569"></div>
+      <div class="form-row">
+        <div class="field"><label>หน่วย</label><select id="inspUnit">${UNITS.map(u=>`<option>${u}</option>`).join('')}</select></div>
+        <div class="field"><label>วันที่ตรวจสอบ</label><input type="text" id="inspDate" value="${todayThai()}"></div>
+      </div>
+    `,
+    onSubmit:()=>{
+      const unit = document.getElementById('inspUnit').value;
+      const name = document.getElementById('inspName').value.trim() || 'รอบตรวจสอบ';
+      const date = document.getElementById('inspDate').value;
+      const items = ASSETS.filter(a=>a.unit===unit && a.holder!=='-').map(a=>({code:a.code, found:true, condition:'สภาพดี'}));
+      if(!items.length){ showToast(`ไม่มีอุปกรณ์ที่ครอบครองอยู่ในหน่วย ${unit}`); return; }
+      INSPECTIONS.push({id:inspectionSeq++, name, unit, date, status:'OPEN', items});
+      closeModal('formModal');
+      renderInspectionTbody();
+      showToast(`สร้างรอบตรวจสอบ "${name}" เรียบร้อย — ${items.length} รายการ`);
+    }
+  });
+}
+function openInspectionChecklist(id){
+  const insp = INSPECTIONS.find(x=>x.id===id);
+  if(!insp) return;
+  const rows = insp.items.map((it,i)=>{
+    const a = ASSETS.find(x=>x.code===it.code);
+    return `
+      <div style="display:grid;grid-template-columns:110px 1fr 90px 130px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12.8px;">
+        <span class="code">${it.code}</span>
+        <span>${a?a.model:''}</span>
+        <select data-idx="${i}" class="inspFound">
+          <option value="1" ${it.found?'selected':''}>พบ</option>
+          <option value="0" ${!it.found?'selected':''}>ไม่พบ</option>
+        </select>
+        <select data-idx="${i}" class="inspCond">
+          <option ${it.condition==='สภาพดี'?'selected':''}>สภาพดี</option>
+          <option ${it.condition==='ชำรุด'?'selected':''}>ชำรุด</option>
+        </select>
+      </div>`;
+  }).join('');
+  showFormModal({
+    title:`ดำเนินการตรวจสอบ — ${insp.name}`,
+    okLabel:'ปิดรอบตรวจสอบ',
+    bodyHtml:`
+      <div style="display:grid;grid-template-columns:110px 1fr 90px 130px;gap:8px;font-size:11px;color:var(--ink-soft);text-transform:uppercase;padding-bottom:6px;border-bottom:1px solid var(--line);">
+        <span>Asset Code</span><span>รุ่น</span><span>พบ/ไม่พบ</span><span>สภาพ</span>
+      </div>
+      ${rows}
+    `,
+    onSubmit:()=>{
+      document.querySelectorAll('.inspFound').forEach(sel=>{ insp.items[Number(sel.dataset.idx)].found = sel.value==='1'; });
+      document.querySelectorAll('.inspCond').forEach(sel=>{ insp.items[Number(sel.dataset.idx)].condition = sel.value; });
+      let notFound=0, damaged=0;
+      insp.items.forEach(it=>{
+        const a = ASSETS.find(x=>x.code===it.code);
+        if(!a) return;
+        if(!it.found){ a.status='LOST'; notFound++; }
+        else if(it.condition==='ชำรุด'){ a.status='DAMAGED'; damaged++; }
+      });
+      insp.status = 'CLOSED';
+      closeModal('formModal');
+      renderInspectionTbody();
+      showToast(`ปิดรอบตรวจสอบ "${insp.name}" — ไม่พบ ${notFound} รายการ, ชำรุด ${damaged} รายการ`);
+    }
+  });
+}
+
+/* ============ รายงาน (REPORTS) ============ */
+function renderReports(){
+  return `
+    <div class="panel">
+      <div class="panel-head"><h3>รายงานที่พร้อมส่งออก</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>ชื่อรายงาน</th><th style="width:220px;"></th></tr></thead>
+          <tbody>
+            ${REPORT_TYPES.map(r=>`
+              <tr><td>${r.name}</td>
+              <td>
+                <button class="link-btn" onclick="exportReport('${r.id}','pdf')">Export PDF</button>
+                &nbsp;·&nbsp;
+                <button class="link-btn" onclick="exportReport('${r.id}','xlsx')">Export Excel</button>
+              </td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="demo-note" style="max-width:520px;margin-top:14px;">โหมดสาธิต — การส่งออกยังไม่เชื่อมต่อ Report Engine จริง (PDF/Excel) ตามที่ระบุใน API design</div>`;
+}
+function exportReport(id, format){
+  const r = REPORT_TYPES.find(x=>x.id===id);
+  showToast(`กำลังส่งออก "${r.name}" เป็น ${format.toUpperCase()}... (โหมดสาธิต)`);
+}
+
+/* ============ ผู้ดูแลระบบ (ADMIN) ============ */
+let adminTab = 'users';
+function renderAdmin(){
+  const tabLabels = {users:'User / Role', units:'หน่วย & สถานที่', audit:'Audit Log', backup:'Backup', settings:'ตั้งค่าสถานะ'};
+  return `
+    <div class="toolbar" style="margin-bottom:0;">
+      ${Object.keys(tabLabels).map(t=>`
+        <button class="btn ${adminTab===t?'btn-primary':'btn-outline'} btn-sm" style="width:auto;" onclick="setAdminTab('${t}')">${tabLabels[t]}</button>`).join('')}
+    </div>
+    <div id="adminTabBody" style="margin-top:14px;"></div>`;
+}
+function setAdminTab(t){ adminTab = t; goTo('admin'); }
+function renderAdminTabBody(){
+  const el = document.getElementById('adminTabBody');
+  if(!el) return;
+  if(adminTab==='users'){
+    el.innerHTML = `
+      <div class="panel"><div class="panel-body" style="padding:0;">
+        <table><thead><tr><th>Username</th><th>ชื่อ-สกุล</th><th>บทบาท</th><th>หน่วย</th><th>สถานะ</th><th></th></tr></thead>
+        <tbody>${USERS_LIST.map((u,i)=>`
+          <tr><td class="mono">${u.user}</td><td>${u.name}</td><td>${u.role}</td><td>${u.unit}</td>
+          <td>${u.active?'<span class="tag tag-ASSIGNED">ใช้งาน</span>':'<span class="tag tag-DAMAGED">ระงับ</span>'}</td>
+          <td><button class="link-btn" onclick="toggleUserActive(${i})">${u.active?'ระงับ':'เปิดใช้งาน'}</button></td></tr>`).join('')}
+        </tbody></table>
+      </div></div>`;
+  } else if(adminTab==='units'){
+    el.innerHTML = `
+      <div class="panel"><div class="panel-body" style="padding:0;">
+        <table><thead><tr><th>หน่วย</th><th>สถานที่หลัก</th><th>จำนวนอุปกรณ์</th></tr></thead>
+        <tbody>${UNITS.map(u=>`
+          <tr><td>${u}</td><td>${LOCATIONS_BY_UNIT[u]||'-'}</td><td>${ASSETS.filter(a=>a.unit===u).length}</td></tr>`).join('')}
+        </tbody></table>
+      </div></div>`;
+  } else if(adminTab==='audit'){
+    el.innerHTML = `
+      <div class="panel"><div class="panel-body" style="padding:0;">
+        <table><thead><tr><th>เวลา</th><th>ผู้ใช้</th><th>Action</th><th>Record</th><th>รายละเอียด</th></tr></thead>
+        <tbody>${AUDIT_LOGS.slice().reverse().map(l=>`
+          <tr><td class="mono">${l.t}</td><td>${l.user}</td><td class="mono">${l.action}</td><td class="code">${l.recordId}</td><td>${l.detail}</td></tr>`).join('')}
+        </tbody></table>
+      </div></div>`;
+  } else if(adminTab==='backup'){
+    el.innerHTML = `
+      <div class="panel">
+        <div class="panel-head"><h3>ประวัติ Backup</h3><button class="btn btn-primary btn-sm" style="width:auto;" onclick="runBackupNow()">เรียกใช้ Backup ทันที</button></div>
+        <div class="panel-body" style="padding:0;">
+        <table><thead><tr><th>เวลา</th><th>สถานะ</th><th>ขนาดไฟล์</th></tr></thead>
+        <tbody id="backupTbody">${BACKUPS.slice().reverse().map(b=>`
+          <tr><td class="mono">${b.t}</td><td><span class="tag tag-${b.status==='SUCCESS'?'ASSIGNED':'DAMAGED'}">${b.status}</span></td><td>${b.size}</td></tr>`).join('')}
+        </tbody></table>
+      </div></div>`;
+  } else if(adminTab==='settings'){
+    el.innerHTML = `
+      <div class="demo-note" style="max-width:560px;margin-bottom:14px;">ชื่อสถานะสามารถแก้ไขได้ตามระเบียบจริงของหน่วย โดยไม่กระทบ logic ของระบบ (แก้เฉพาะ label ที่แสดงผล — asset_statuses.name_th)</div>
+      <div class="panel"><div class="panel-body" style="padding:0;">
+        <table><thead><tr><th>รหัสสถานะ</th><th>ชื่อที่แสดงผล</th><th></th></tr></thead>
+        <tbody>${Object.keys(STATUS_NAMES).map(code=>`
+          <tr><td class="mono">${code}</td>
+          <td><input type="text" id="statusName_${code}" value="${STATUS_NAMES[code]}" style="width:100%;padding:6px 9px;border:1px solid var(--line);border-radius:3px;font-family:inherit;"></td>
+          <td><button class="link-btn" onclick="saveStatusName('${code}')">บันทึก</button></td></tr>`).join('')}
+        </tbody></table>
+      </div></div>`;
+  }
+}
+function toggleUserActive(i){
+  const u = USERS_LIST[i];
+  u.active = !u.active;
+  renderAdminTabBody();
+  showToast(`${u.active?'เปิดใช้งาน':'ระงับ'}ผู้ใช้ ${u.user} เรียบร้อย`);
+}
+function runBackupNow(){
+  showConfirm('ยืนยันเรียกใช้ Backup ฐานข้อมูลทันที?', ()=>{
+    BACKUPS.push({t:`${todayThai()} ${new Date().toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit'})}`, status:'SUCCESS', size:`${128+BACKUPS.length} MB`});
+    renderAdminTabBody();
+    showToast('Backup สำเร็จ');
+  }, {title:'เรียกใช้ Backup'});
+}
+function saveStatusName(code){
+  const val = document.getElementById(`statusName_${code}`).value.trim();
+  if(!val) return;
+  STATUS_NAMES[code] = val;
+  showToast(`บันทึกชื่อสถานะ ${code} เป็น "${val}" เรียบร้อย`);
 }
 
 /* ============ ATTACHMENTS ============ */
@@ -738,7 +1333,7 @@ function openAsset(code){
         <div class="kv"><b>รุ่น</b><span>${a.model}</span></div>
         <div class="kv"><b>ประเภท</b><span>${a.cat}</span></div>
         <div class="kv"><b>S/N</b><span class="mono">${a.sn}</span></div>
-        <div class="kv"><b>สถานะ</b><span><span class="tag tag-${a.status}">${a.status}</span></span></div>
+        <div class="kv"><b>สถานะ</b><span><span class="tag tag-${a.status}">${STATUS_NAMES[a.status]||a.status}</span></span></div>
         <div class="kv"><b>หน่วย</b><span>${a.unit}</span></div>
         <div class="kv"><b>ผู้ครอบครอง</b><span>${a.holder}</span></div>
         <div class="kv"><b>สถานที่</b><span>${a.loc}</span></div>
@@ -826,7 +1421,7 @@ function handleAttachFiles(event){
   if(!files.length || !currentAssetCode) return;
   if(!ATTACHMENTS[currentAssetCode]) ATTACHMENTS[currentAssetCode] = [];
 
-  const today = new Date().toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'2-digit'});
+  const today = todayThai();
   let pending = files.length;
 
   files.forEach(file=>{
