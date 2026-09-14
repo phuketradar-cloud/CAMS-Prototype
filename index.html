@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CAMS — ระบบควบคุมทะเบียนอุปกรณ์สื่อสาร</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy-900:#0b1f3a;
+    --navy-800:#122a4d;
+    --navy-700:#1b3a66;
+    --steel-500:#3b6ea5;
+    --steel-300:#8fb4d9;
+    --amber-500:#c9822c;
+    --amber-100:#fbead2;
+    --red-500:#b3432b;
+    --red-100:#f8ddd6;
+    --green-600:#3f7d4c;
+    --green-100:#dcefe0;
+    --bg:#f3f5f8;
+    --paper:#ffffff;
+    --line:#dfe4ea;
+    --ink:#182233;
+    --ink-soft:#5a6474;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    font-family:'IBM Plex Sans Thai', sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    font-size:14px;
+  }
+  .mono{font-family:'IBM Plex Mono', monospace;}
+  .app{display:flex; min-height:100vh;}
+
+  /* ---------- LOGIN ---------- */
+  #loginScreen{
+    position:fixed; inset:0; background:linear-gradient(160deg,var(--navy-900),var(--navy-700));
+    display:flex; align-items:center; justify-content:center; z-index:50;
+  }
+  .login-card{
+    width:360px; background:var(--paper); border-radius:4px; padding:36px 32px;
+    box-shadow:0 20px 50px rgba(0,0,0,.35);
+  }
+  .login-badge{
+    width:46px;height:46px;border-radius:4px;background:var(--navy-900);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:15px;margin-bottom:14px;
+    letter-spacing:.5px;
+  }
+  .login-card h1{font-size:17px;margin:0 0 2px;color:var(--navy-900);}
+  .login-card p{margin:0 0 22px;color:var(--ink-soft);font-size:12.5px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);margin-bottom:5px;font-weight:500;}
+  .field input, .field select{
+    width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:3px; font-size:14px;
+    font-family:inherit; background:#fbfcfd;
+  }
+  .field input:focus, .field select:focus{outline:none;border-color:var(--steel-500);background:#fff;}
+  .btn{
+    border:none;border-radius:3px;padding:10px 16px;font-family:inherit;font-size:13.5px;font-weight:600;
+    cursor:pointer;transition:.15s;
+  }
+  .btn-primary{background:var(--navy-900);color:#fff;width:100%;}
+  .btn-primary:hover{background:var(--navy-700);}
+  .btn-outline{background:#fff;border:1px solid var(--line);color:var(--ink);}
+  .btn-outline:hover{border-color:var(--steel-500);color:var(--steel-500);}
+  .btn-sm{padding:6px 11px;font-size:12.5px;}
+  .demo-note{margin-top:16px;font-size:11.5px;color:var(--ink-soft);background:var(--amber-100);border-left:3px solid var(--amber-500);padding:8px 10px;border-radius:2px;}
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar{
+    width:230px; background:var(--navy-900); color:#cdd8ea; flex-shrink:0;
+    display:flex; flex-direction:column; position:sticky; top:0; height:100vh;
+  }
+  .brand{padding:18px 18px 14px; border-bottom:1px solid rgba(255,255,255,.08);}
+  .brand .badge{
+    width:34px;height:34px;border-radius:4px;background:var(--steel-500);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;margin-bottom:8px;
+  }
+  .brand .name{font-size:13.5px;font-weight:600;color:#fff;line-height:1.3;}
+  .brand .sub{font-size:10.5px;color:#93a3bd;margin-top:2px;}
+  .nav-group{padding:12px 10px;flex:1;overflow-y:auto;}
+  .nav-label{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#5f729a;padding:10px 10px 4px;}
+  .nav-item{
+    display:flex;align-items:center;gap:9px;padding:9px 11px;border-radius:3px;color:#c3cee2;
+    cursor:pointer;font-size:13px;margin-bottom:1px;
+  }
+  .nav-item:hover{background:rgba(255,255,255,.06);}
+  .nav-item.active{background:var(--steel-500);color:#fff;font-weight:600;}
+  .nav-icon{width:16px;text-align:center;font-size:13px;opacity:.9;}
+  .sidebar-foot{padding:12px 18px;border-top:1px solid rgba(255,255,255,.08);font-size:11.5px;color:#8494b3;}
+
+  /* ---------- MAIN ---------- */
+  .main{flex:1;min-width:0;}
+  .topbar{
+    background:#fff;border-bottom:1px solid var(--line);padding:12px 26px;
+    display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;
+  }
+  .topbar h2{font-size:16px;margin:0;color:var(--navy-900);}
+  .topbar .crumbs{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .user-chip{display:flex;align-items:center;gap:9px;font-size:12.5px;}
+  .avatar{width:28px;height:28px;border-radius:50%;background:var(--navy-800);color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;}
+  .content{padding:22px 26px 60px;}
+
+  /* ---------- CARDS / KPI ---------- */
+  .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px;}
+  .kpi{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:14px 15px;}
+  .kpi .n{font-size:22px;font-weight:700;color:var(--navy-900);font-family:'IBM Plex Mono';}
+  .kpi .l{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
+  .kpi.warn .n{color:var(--amber-500);}
+  .kpi.bad .n{color:var(--red-500);}
+
+  .panel{background:var(--paper);border:1px solid var(--line);border-radius:4px;margin-bottom:20px;}
+  .panel-head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+  .panel-head h3{font-size:14px;margin:0;color:var(--navy-900);}
+  .panel-body{padding:16px;}
+
+  .alert-row{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px dashed var(--line);font-size:12.8px;}
+  .alert-row:last-child{border:none;}
+  .dot{width:8px;height:8px;border-radius:50%;margin-top:4px;flex-shrink:0;}
+  .dot.red{background:var(--red-500);} .dot.amber{background:var(--amber-500);} .dot.grey{background:#9aa6b8;}
+
+  /* ---------- TABLE ---------- */
+  table{width:100%;border-collapse:collapse;font-size:12.8px;}
+  thead th{
+    text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);
+    padding:9px 12px;border-bottom:1px solid var(--line);background:#fafbfc;font-weight:600;
+  }
+  tbody td{padding:10px 12px;border-bottom:1px solid #eef1f5;vertical-align:middle;}
+  tbody tr:hover{background:#f8fafc;}
+  .code{font-family:'IBM Plex Mono';font-weight:600;color:var(--navy-800);}
+
+  .tag{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:600;}
+  .tag-IN_STOCK{background:#e6edf5;color:var(--steel-500);}
+  .tag-ASSIGNED{background:var(--green-100);color:var(--green-600);}
+  .tag-BORROWED{background:var(--amber-100);color:var(--amber-500);}
+  .tag-REPAIR{background:#eae4f7;color:#6b46a8;}
+  .tag-DAMAGED{background:var(--red-100);color:var(--red-500);}
+  .tag-OVERDUE{background:var(--red-100);color:var(--red-500);}
+  .tag-DISPOSAL{background:var(--amber-100);color:var(--amber-500);}
+  .tag-DISPOSED{background:#e3e6ea;color:#5a6474;}
+  .tag-LOST{background:var(--red-100);color:var(--red-500);}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px;}
+  .toolbar input[type=text]{padding:8px 11px;border:1px solid var(--line);border-radius:3px;font-family:inherit;font-size:13px;min-width:220px;}
+  .toolbar select{padding:8px 10px;border:1px solid var(--line);border-radius:3px;font-family:inherit;font-size:13px;}
+  .search-box{position:relative;min-width:260px;}
+  .search-box svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;stroke:var(--ink-soft);pointer-events:none;}
+  .search-box input[type=text]{width:100%;min-width:0;padding:8px 11px 8px 32px;}
+  .search-box .clear-btn{position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--ink-soft);cursor:pointer;font-size:14px;display:none;padding:0 3px;}
+  .search-box.has-text .clear-btn{display:block;}
+  .empty-row td{padding:26px 12px;text-align:center;color:var(--ink-soft);font-size:12.8px;}
+  .result-count{font-size:11.5px;color:var(--ink-soft);margin-bottom:8px;}
+
+  .link-btn{background:none;border:none;color:var(--steel-500);cursor:pointer;font-size:12.5px;font-weight:600;padding:0;font-family:inherit;}
+  .link-btn:hover{text-decoration:underline;}
+
+  /* ---------- MODAL ---------- */
+  .modal-backdrop{position:fixed;inset:0;background:rgba(11,31,58,.55);display:none;align-items:center;justify-content:center;z-index:100;padding:20px;}
+  .modal-backdrop.show{display:flex;}
+  .modal{background:#fff;border-radius:5px;width:100%;max-width:720px;max-height:88vh;overflow-y:auto;box-shadow:0 25px 60px rgba(0,0,0,.4);}
+  .modal-head{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
+  .modal-head h3{margin:0;font-size:15px;color:var(--navy-900);}
+  .modal-close{background:none;border:none;font-size:18px;cursor:pointer;color:var(--ink-soft);}
+  .modal-body{padding:20px;}
+  .modal-foot{padding:14px 20px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px;}
+
+  /* asset detail */
+  .detail-grid{display:grid;grid-template-columns:1fr 170px;gap:20px;}
+  .kv{display:grid;grid-template-columns:120px 1fr;gap:6px 10px;font-size:12.8px;margin-bottom:3px;}
+  .kv b{color:var(--ink-soft);font-weight:500;}
+  .qr-box{border:1px solid var(--line);border-radius:4px;padding:14px;text-align:center;background:#fafbfc;}
+  .qr-box svg{width:100%;height:auto;}
+  .qr-box .code{display:block;margin-top:8px;font-size:12px;}
+
+  .timeline{border-left:2px solid var(--line);margin-left:6px;padding-left:16px;}
+  .tl-item{position:relative;padding-bottom:16px;}
+  .tl-item::before{content:'';position:absolute;left:-21px;top:2px;width:9px;height:9px;border-radius:50%;background:var(--steel-500);border:2px solid #fff;box-shadow:0 0 0 1px var(--steel-500);}
+  .tl-item .tl-title{font-size:13px;font-weight:600;color:var(--navy-900);}
+  .tl-item .tl-meta{font-size:11.5px;color:var(--ink-soft);margin-top:1px;}
+
+  /* attachments */
+  .section-head{display:flex;justify-content:space-between;align-items:center;padding:14px 0 8px;border-bottom:1px solid var(--line);margin-top:18px;}
+  .section-head h3{font-size:13px;margin:0;color:var(--navy-900);}
+  .attach-hint{font-size:11px;color:var(--ink-soft);margin:8px 0 12px;}
+  .attach-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(96px,1fr));gap:10px;}
+  .attach-add{
+    border:1.5px dashed var(--line);border-radius:5px;aspect-ratio:1/1;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--steel-500);background:#fafbfc;
+    font-size:11px;text-align:center;padding:6px;
+  }
+  .attach-add:hover{border-color:var(--steel-500);background:#f2f7fc;}
+  .attach-add .plus{font-size:20px;line-height:1;}
+  .attach-item{
+    position:relative;border:1px solid var(--line);border-radius:5px;overflow:hidden;background:#fafbfc;
+    aspect-ratio:1/1;cursor:pointer;
+  }
+  .attach-item img{width:100%;height:100%;object-fit:cover;display:block;}
+  .attach-item .file-ic{
+    width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:5px;color:var(--steel-500);font-size:22px;
+  }
+  .attach-item .file-ic span{font-size:9.5px;color:var(--ink-soft);padding:0 6px;text-align:center;word-break:break-all;line-height:1.2;}
+  .attach-item .attach-remove{
+    position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:50%;background:rgba(11,31,58,.75);
+    color:#fff;border:none;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+    opacity:0;transition:.12s;
+  }
+  .attach-item:hover .attach-remove{opacity:1;}
+  .attach-caption{
+    position:absolute;left:0;right:0;bottom:0;background:linear-gradient(transparent,rgba(11,31,58,.82));
+    color:#fff;font-size:9.5px;padding:10px 6px 4px;line-height:1.25;
+  }
+  .attach-empty{grid-column:1/-1;color:var(--ink-soft);font-size:12px;padding:6px 2px;}
+
+  .lightbox{position:fixed;inset:0;background:rgba(8,16,30,.9);display:none;align-items:center;justify-content:center;z-index:200;padding:30px;}
+  .lightbox.show{display:flex;}
+  .lightbox img{max-width:100%;max-height:82vh;border-radius:4px;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+  .lightbox .lb-cap{color:#dfe6f2;font-size:12.5px;margin-top:10px;text-align:center;}
+  .lightbox .lb-close{position:absolute;top:20px;right:26px;background:none;border:none;color:#fff;font-size:22px;cursor:pointer;}
+
+  /* custom confirm dialog + toast (native confirm()/alert() are unreliable inside sandboxed artifact iframes) */
+  #confirmModal .modal{max-width:420px;}
+  #confirmModal .modal-body{font-size:13.3px;line-height:1.6;color:var(--ink);white-space:pre-line;}
+  #toast{
+    position:fixed;top:18px;left:50%;transform:translateX(-50%) translateY(-12px);z-index:300;
+    background:var(--navy-900);color:#fff;padding:11px 18px;border-radius:5px;font-size:13px;
+    box-shadow:0 10px 30px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:.2s ease;
+    max-width:90vw;text-align:center;
+  }
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .placeholder{padding:50px 20px;text-align:center;color:var(--ink-soft);}
+  .placeholder .big{font-size:34px;margin-bottom:10px;}
+  .placeholder h4{color:var(--navy-900);margin:0 0 6px;font-size:15px;}
+  .placeholder ul{display:inline-block;text-align:left;font-size:12.8px;margin-top:10px;}
+
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .steps{display:flex;gap:6px;margin-bottom:18px;}
+  .step{flex:1;text-align:center;font-size:11px;color:var(--ink-soft);padding-bottom:8px;border-bottom:3px solid var(--line);}
+  .step.done{color:var(--green-600);border-color:var(--green-600);font-weight:600;}
+  .step.now{color:var(--steel-500);border-color:var(--steel-500);font-weight:600;}
+
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:#c4cbd6;border-radius:5px;}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-badge">CAMS</div>
+    <h1>ระบบควบคุมทะเบียนอุปกรณ์สื่อสาร</h1>
+    <p>Communication Asset Management System — RTAF RCC · Standalone V1</p>
+    <div class="field">
+      <label>ชื่อผู้ใช้งาน</label>
+      <input type="text" value="officer01" id="loginUser">
+    </div>
+    <div class="field">
+      <label>รหัสผ่าน</label>
+      <input type="password" value="••••••••" id="loginPass">
+    </div>
+    <div class="field">
+      <label>บทบาท (จำลองสำหรับ Prototype)</label>
+      <select id="loginRole">
+        <option value="OFFICER">OFFICER — เจ้าหน้าที่ปฏิบัติการ</option>
+        <option value="APPROVER">APPROVER — ผู้อนุมัติ</option>
+        <option value="UNIT_ADMIN">UNIT ADMIN — ผู้ดูแลข้อมูลหน่วย</option>
+        <option value="SUPER_ADMIN">SUPER ADMIN — ผู้ดูแลระบบสูงสุด</option>
+        <option value="VIEWER">VIEWER — ผู้ดูข้อมูล</option>
+      </select>
+    </div>
+    <button class="btn btn-primary" onclick="doLogin()">เข้าสู่ระบบ</button>
+    <div class="demo-note">โหมดสาธิต (Prototype UI/UX) — ข้อมูลทั้งหมดเป็นข้อมูลจำลอง ไม่เชื่อมต่อฐานข้อมูลจริง</div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div class="app" id="appRoot" style="display:none;">
+  <div class="sidebar">
+    <div class="brand">
+      <div class="badge">CAMS</div>
+      <div class="name">ทะเบียนอุปกรณ์สื่อสาร</div>
+      <div class="sub">RTAF RCC · Standalone V1</div>
+    </div>
+    <div class="nav-group" id="navGroup"></div>
+    <div class="sidebar-foot">Backup ล่าสุด: 18/08/69 02:00 <br><span style="color:#5fbf7a;">● สำเร็จ</span></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <div>
+        <h2 id="pageTitle">Dashboard</h2>
+        <div class="crumbs" id="pageCrumb">ภาพรวมระบบ</div>
+      </div>
+      <div class="user-chip">
+        <div style="text-align:right;">
+          <div style="font-weight:600;" id="userName">จ.อ. สมชาย ใจดี</div>
+          <div style="color:var(--ink-soft);font-size:11px;" id="userRole">OFFICER</div>
+        </div>
+        <div class="avatar">สช</div>
+        <button class="btn btn-outline btn-sm" onclick="doLogout()">ออกจากระบบ</button>
+      </div>
+    </div>
+    <div class="content" id="pageContent"></div>
+  </div>
+</div>
+
+<!-- ===================== ASSET DETAIL MODAL ===================== -->
+<div class="modal-backdrop" id="assetModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>รายละเอียดอุปกรณ์</h3>
+      <button class="modal-close" onclick="closeModal('assetModal')">✕</button>
+    </div>
+    <div class="modal-body" id="assetModalBody"></div>
+    <div class="modal-foot" id="assetModalFoot"></div>
+  </div>
+</div>
+
+<input type="file" id="attachFileInput" multiple accept="image/*,.pdf,.doc,.docx" style="display:none;" onchange="handleAttachFiles(event)">
+
+<div id="toast"></div>
+
+<div class="lightbox" id="lightbox" onclick="if(event.target===this) closeLightbox()">
+  <button class="lb-close" onclick="closeLightbox()">✕</button>
+  <div>
+    <img id="lightboxImg" src="" alt="">
+    <div class="lb-cap" id="lightboxCap"></div>
+  </div>
+</div>
+
+<div class="modal-backdrop" id="confirmModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="confirmTitle">ยืนยันการทำรายการ</h3>
+      <button class="modal-close" onclick="closeModal('confirmModal')">✕</button>
+    </div>
+    <div class="modal-body" id="confirmBody"></div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('confirmModal')">ยกเลิก</button>
+      <button class="btn btn-primary" style="width:auto;" id="confirmOkBtn">ยืนยัน</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TRANSFER MODAL ===================== -->
+<div class="modal-backdrop" id="transferModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>สร้างใบโอนอุปกรณ์ (TRANSFER)</h3>
+      <button class="modal-close" onclick="closeModal('transferModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="steps">
+        <div class="step done">1. เลือกอุปกรณ์</div>
+        <div class="step now">2. กรอกรายละเอียด</div>
+        <div class="step">3. เสนออนุมัติ</div>
+      </div>
+      <div class="field"><label>เลขที่เอกสาร</label><input type="text" value="TRF-2569-000021" disabled></div>
+      <div class="form-row">
+        <div class="field"><label>อุปกรณ์</label><input type="text" value="COM-000001 · PRC-112G" disabled></div>
+        <div class="field"><label>วันที่โอน</label><input type="text" value="18/08/2569"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>จากผู้ครอบครอง</label><input type="text" value="จ.อ. สมชาย ใจดี / ศคว." disabled></div>
+        <div class="field"><label>ไปยังผู้ครอบครอง</label>
+          <select><option>จ.อ. วีระ พงษ์ทอง / ศคว.2</option><option>ร.ต. อรุณ ศรีสุข / ฝสส.</option></select>
+        </div>
+      </div>
+      <div class="field"><label>เหตุผลการโอน</label><input type="text" value="สนับสนุนภารกิจฝึก SAR TTX 2569"></div>
+      <div class="field"><label>ผู้อนุมัติ</label><select><option>น.ท. ประเสริฐ วงศ์สุวรรณ (APPROVER)</option></select></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-outline" onclick="closeModal('transferModal')">ยกเลิก</button>
+      <button class="btn btn-primary" style="width:auto;" onclick="submitTransfer()">เสนอเพื่ออนุมัติ</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ MOCK DATA ============ */
+const ASSETS = [
+  {code:'COM-000001', model:'PRC-112G', cat:'วิทยุสื่อสารภาคพื้น', sn:'PX119-4471', status:'ASSIGNED', unit:'ศคว.', holder:'จ.อ. สมชาย ใจดี', loc:'ห้องสื่อสาร ชั้น 2', received:'12/03/2567', warranty:'12/03/2569'},
+  {code:'COM-000002', model:'AN/PRC-152', cat:'วิทยุสื่อสารภาคพื้น', sn:'AP152-0093', status:'BORROWED', unit:'ศคว.', holder:'ร.ต. อรุณ ศรีสุข', loc:'สนามฝึก SAR', received:'02/05/2567', warranty:'02/05/2569'},
+  {code:'COM-000003', model:'HF-2000', cat:'วิทยุสื่อสารระยะไกล', sn:'HF20-1187', status:'REPAIR', unit:'ศคว.2', holder:'-', loc:'ศูนย์ซ่อมบำรุง', received:'20/11/2566', warranty:'20/11/2568'},
+  {code:'COM-000004', model:'GPS Tracker T400', cat:'อุปกรณ์นำทาง', sn:'T400-2265', status:'IN_STOCK', unit:'คลังกลาง', holder:'-', loc:'คลังอุปกรณ์ ชั้น 1', received:'05/06/2569', warranty:'05/06/2571'},
+  {code:'COM-000005', model:'PRC-112G', cat:'วิทยุสื่อสารภาคพื้น', sn:'PX119-4488', status:'DAMAGED', unit:'ฝสส.', holder:'-', loc:'ห้องพัสดุชำรุด', received:'18/01/2565', warranty:'18/01/2567'},
+  {code:'COM-000006', model:'Battery Pack BB-390', cat:'อุปกรณ์พลังงาน', sn:'BB390-9021', status:'ASSIGNED', unit:'ศคว.', holder:'จ.อ. สมชาย ใจดี', loc:'ห้องสื่อสาร ชั้น 2', received:'02/05/2567', warranty:'02/05/2568'},
+];
+
+const HISTORY = {
+  'COM-000001':[
+    {d:'12/03/67', t:'รับเข้า', who:'จนท.คลัง — ADMIN01', doc:'REC-2567-000045'},
+    {d:'20/03/67', t:'เบิกจ่าย → จ.อ. สมชาย ใจดี / ศคว.', who:'OFFICER01', doc:'ISS-2567-000031'},
+    {d:'14/09/68', t:'ส่งซ่อม (จอแสดงผลไม่ติด)', who:'OFFICER01', doc:'REP-2568-000012'},
+    {d:'02/10/68', t:'รับกลับจากซ่อม — ซ่อมสำเร็จ', who:'OFFICER01', doc:'REP-2568-000012'},
+    {d:'18/08/69', t:'ตรวจสอบประจำปี — พบครบ สภาพดี', who:'INSPECTOR02', doc:'INS-2569-000003'},
+  ]
+};
+
+const ALERTS = [
+  {c:'red', txt:'COM-000018 — ไม่พบในการตรวจสอบประจำปี 2569 (ศคว.2)'},
+  {c:'red', txt:'COM-000002 — เกินกำหนดคืน 3 วัน (ผู้ยืม: ร.ต. อรุณ ศรีสุข)'},
+  {c:'amber', txt:'COM-000003 — ส่งซ่อมเกินกำหนด 45 วัน (ศูนย์ซ่อมบำรุง)'},
+  {c:'amber', txt:'ฝสส. — ยังไม่ได้ตรวจสอบประจำปี 2569 (เหลือ 12 รายการ)'},
+];
+
+const BORROWS = [
+  {code:'COM-000002', model:'AN/PRC-152', borrower:'ร.ต. อรุณ ศรีสุข', out:'10/08/2569', due:'15/08/2569', status:'OVERDUE'},
+  {code:'COM-000009', model:'GPS Tracker T400', borrower:'จ.ท. ปรีชา บุญมี', out:'16/08/2569', due:'23/08/2569', status:'BORROWED'},
+  {code:'COM-000011', model:'PRC-112G', borrower:'จ.อ. วีระ พงษ์ทอง', out:'01/08/2569', due:'08/08/2569', status:'BORROWED'},
+];
+
+const NAV = [
+  {group:'ภาพรวม', items:[{id:'dashboard', label:'Dashboard', icon:'◈'}]},
+  {group:'ทะเบียน', items:[{id:'registry', label:'ทะเบียนอุปกรณ์', icon:'▤'}]},
+  {group:'ธุรกรรม', items:[
+    {id:'receive', label:'รับเข้า', icon:'↧'},
+    {id:'issue', label:'เบิกจ่าย', icon:'↥'},
+    {id:'custody', label:'ครอบครอง', icon:'◐'},
+    {id:'transfer', label:'โอน', icon:'⇄'},
+    {id:'borrow', label:'ยืม-คืน', icon:'↺'},
+    {id:'repair', label:'ซ่อม', icon:'✚'},
+    {id:'inspection', label:'ตรวจสอบ', icon:'✓'},
+    {id:'disposal', label:'จำหน่าย', icon:'✕'},
+  ]},
+  {group:'รายงาน / ระบบ', items:[
+    {id:'reports', label:'รายงาน', icon:'▦'},
+    {id:'admin', label:'ผู้ดูแลระบบ', icon:'⚙'},
+  ]},
+];
+
+let currentPage = 'dashboard';
+
+/* ============ AUTH ============ */
+function doLogin(){
+  const role = document.getElementById('loginRole').value;
+  document.getElementById('userRole').textContent = role;
+  document.getElementById('loginScreen').style.display='none';
+  document.getElementById('appRoot').style.display='flex';
+  renderNav();
+  goTo('dashboard');
+}
+function doLogout(){
+  document.getElementById('loginScreen').style.display='flex';
+  document.getElementById('appRoot').style.display='none';
+}
+
+/* ============ NAV ============ */
+function renderNav(){
+  const el = document.getElementById('navGroup');
+  el.innerHTML = NAV.map(g=>`
+    <div class="nav-label">${g.group}</div>
+    ${g.items.map(it=>`<div class="nav-item ${it.id===currentPage?'active':''}" onclick="goTo('${it.id}')">
+      <span class="nav-icon">${it.icon}</span>${it.label}</div>`).join('')}
+  `).join('');
+}
+
+function goTo(page){
+  currentPage = page;
+  renderNav();
+  const titles = {
+    dashboard:['Dashboard','ภาพรวมระบบ'], registry:['ทะเบียนอุปกรณ์','ทะเบียน / รายการอุปกรณ์ทั้งหมด'],
+    receive:['รับเข้า','ธุรกรรม / รับเข้าอุปกรณ์'], issue:['เบิกจ่าย','ธุรกรรม / เบิกจ่ายอุปกรณ์'],
+    custody:['ครอบครอง','ธุรกรรม / อุปกรณ์ตามผู้ครอบครอง'], transfer:['โอน','ธุรกรรม / โอนอุปกรณ์'],
+    borrow:['ยืม-คืน','ธุรกรรม / รายการยืม-คืน'], repair:['ซ่อม','ธุรกรรม / ส่งซ่อม-รับกลับ'],
+    inspection:['ตรวจสอบ','ธุรกรรม / รอบตรวจสอบอุปกรณ์'], disposal:['จำหน่าย','ธุรกรรม / จำหน่ายอุปกรณ์'],
+    reports:['รายงาน','รายงาน / ส่งออก PDF, Excel'], admin:['ผู้ดูแลระบบ','ระบบ / User, Role, Audit Log, Backup'],
+  };
+  document.getElementById('pageTitle').textContent = titles[page][0];
+  document.getElementById('pageCrumb').textContent = titles[page][1];
+  const renderers = {
+    dashboard:renderDashboard, registry:renderRegistry, borrow:renderBorrow, transfer:renderTransferPage, disposal:renderDisposal,
+  };
+  document.getElementById('pageContent').innerHTML = (renderers[page]||renderPlaceholder)(page);
+  if(page==='registry') filterRegistry();
+}
+
+/* ============ DASHBOARD ============ */
+function renderDashboard(){
+  const kpis = [
+    {n:'1,245', l:'อุปกรณ์ทั้งหมด'}, {n:'982', l:'ใช้งาน (ASSIGNED)'}, {n:'126', l:'ในคลัง (IN_STOCK)'},
+    {n:'42', l:'ยืมอยู่', warn:1}, {n:'61', l:'ส่งซ่อม', warn:1}, {n:'21', l:'ชำรุด/สูญหาย', bad:1},
+  ];
+  return `
+    <div class="kpi-row">
+      ${kpis.map(k=>`<div class="kpi ${k.warn?'warn':''} ${k.bad?'bad':''}"><div class="n">${k.n}</div><div class="l">${k.l}</div></div>`).join('')}
+    </div>
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;">
+      <div class="panel">
+        <div class="panel-head"><h3>อุปกรณ์เพิ่มเติมล่าสุด (Recent Transactions)</h3><span class="link-btn" onclick="goTo('registry')">ดูทั้งหมด →</span></div>
+        <div class="panel-body" style="padding:0;">
+          <table>
+            <thead><tr><th>เอกสาร</th><th>ประเภท</th><th>อุปกรณ์</th><th>วันที่</th><th>สถานะ</th></tr></thead>
+            <tbody>
+              <tr><td class="code">TRF-2569-000021</td><td>โอน</td><td class="code">COM-000001</td><td>18/08/69</td><td><span class="tag tag-ASSIGNED">COMPLETED</span></td></tr>
+              <tr><td class="code">REP-2569-000012</td><td>ส่งซ่อม</td><td class="code">COM-000003</td><td>17/08/69</td><td><span class="tag tag-REPAIR">PENDING</span></td></tr>
+              <tr><td class="code">BRW-2569-000044</td><td>ยืม</td><td class="code">COM-000009</td><td>16/08/69</td><td><span class="tag tag-BORROWED">BORROWED</span></td></tr>
+              <tr><td class="code">INS-2569-000003</td><td>ตรวจสอบ</td><td class="code">ศคว. (14 รายการ)</td><td>15/08/69</td><td><span class="tag tag-IN_STOCK">COMPLETED</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h3>การแจ้งเตือน</h3></div>
+        <div class="panel-body">
+          ${ALERTS.map(a=>`<div class="alert-row"><span class="dot ${a.c}"></span><span>${a.txt}</span></div>`).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+
+/* ============ REGISTRY ============ */
+function renderRegistry(){
+  const units = [...new Set(ASSETS.map(a=>a.unit))];
+  return `
+    <div class="toolbar">
+      <div class="search-box" id="searchBox">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="registrySearch" placeholder="ค้นหา: Asset Code / S/N / รุ่น / ผู้ครอบครอง..." oninput="filterRegistry()" autocomplete="off">
+        <button class="clear-btn" onclick="clearRegistrySearch()">✕</button>
+      </div>
+      <select id="registryStatus" onchange="filterRegistry()">
+        <option value="">สถานะทั้งหมด</option>
+        <option value="IN_STOCK">IN_STOCK</option><option value="ASSIGNED">ASSIGNED</option>
+        <option value="BORROWED">BORROWED</option><option value="REPAIR">REPAIR</option>
+        <option value="DAMAGED">DAMAGED</option>
+      </select>
+      <select id="registryUnit" onchange="filterRegistry()">
+        <option value="">หน่วยทั้งหมด</option>
+        ${units.map(u=>`<option value="${u}">${u}</option>`).join('')}
+      </select>
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" style="width:auto;" onclick="goTo('receive')">+ รับเข้าอุปกรณ์ใหม่</button>
+    </div>
+    <div class="result-count" id="registryCount"></div>
+    <div class="panel">
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>Asset Code</th><th>รุ่น / ประเภท</th><th>S/N</th><th>สถานะ</th><th>หน่วย</th><th>ผู้ครอบครอง</th><th>สถานที่</th><th></th></tr></thead>
+          <tbody id="registryTbody"></tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function assetRowHtml(a){
+  return `
+    <tr>
+      <td class="code">${a.code}</td>
+      <td>${a.model}<br><span style="color:var(--ink-soft);font-size:11.5px;">${a.cat}</span></td>
+      <td class="mono">${a.sn}</td>
+      <td><span class="tag tag-${a.status}">${a.status}</span></td>
+      <td>${a.unit}</td>
+      <td>${a.holder}</td>
+      <td>${a.loc}</td>
+      <td><button class="link-btn" onclick="openAsset('${a.code}')">รายละเอียด →</button></td>
+    </tr>`;
+}
+
+function filterRegistry(){
+  const qEl = document.getElementById('registrySearch');
+  const q = (qEl.value||'').trim().toLowerCase();
+  const status = document.getElementById('registryStatus').value;
+  const unit = document.getElementById('registryUnit').value;
+
+  document.getElementById('searchBox').classList.toggle('has-text', q.length>0);
+
+  const filtered = ASSETS.filter(a=>{
+    const matchesText = !q || [a.code, a.model, a.sn, a.holder, a.cat].join(' ').toLowerCase().includes(q);
+    const matchesStatus = !status || a.status===status;
+    const matchesUnit = !unit || a.unit===unit;
+    return matchesText && matchesStatus && matchesUnit;
+  });
+
+  const tbody = document.getElementById('registryTbody');
+  tbody.innerHTML = filtered.length
+    ? filtered.map(assetRowHtml).join('')
+    : `<tr class="empty-row"><td colspan="8">ไม่พบอุปกรณ์ที่ตรงกับเงื่อนไขการค้นหา</td></tr>`;
+
+  document.getElementById('registryCount').textContent = `พบ ${filtered.length} จาก ${ASSETS.length} รายการ`;
+}
+
+function clearRegistrySearch(){
+  document.getElementById('registrySearch').value='';
+  document.getElementById('registrySearch').focus();
+  filterRegistry();
+}
+
+/* ============ BORROW ============ */
+function renderBorrow(){
+  return `
+    <div class="toolbar">
+      <input type="text" placeholder="ค้นหาผู้ยืม / Asset Code...">
+      <select><option>สถานะทั้งหมด</option><option>BORROWED</option><option>OVERDUE</option><option>RETURNED</option></select>
+      <div style="flex:1;"></div>
+      <button class="btn btn-primary" style="width:auto;">+ สร้างรายการยืม</button>
+    </div>
+    <div class="panel">
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>Asset Code</th><th>รุ่น</th><th>ผู้ยืม</th><th>วันที่ยืม</th><th>กำหนดคืน</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody>
+            ${BORROWS.map(b=>`
+              <tr>
+                <td class="code">${b.code}</td><td>${b.model}</td><td>${b.borrower}</td>
+                <td>${b.out}</td><td>${b.due}</td>
+                <td><span class="tag tag-${b.status}">${b.status}</span></td>
+                <td><button class="link-btn">บันทึกคืน →</button></td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="demo-note" style="max-width:520px;">กฎระบบ: ถ้า <span class="mono">due_date &lt; วันนี้</span> และยังไม่คืน ระบบจะเปลี่ยนสถานะเป็น <b>OVERDUE</b> และแจ้งเตือนบน Dashboard อัตโนมัติ</div>`;
+}
+
+/* ============ TRANSFER PAGE ============ */
+function renderTransferPage(){
+  return `
+    <div class="panel">
+      <div class="panel-head"><h3>รายการโอนล่าสุด</h3>
+        <button class="btn btn-primary btn-sm" style="width:auto;" onclick="openModal('transferModal')">+ สร้างใบโอน</button>
+      </div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>เอกสาร</th><th>อุปกรณ์</th><th>จาก</th><th>ไปยัง</th><th>วันที่</th><th>สถานะ</th></tr></thead>
+          <tbody>
+            <tr><td class="code">TRF-2569-000021</td><td class="code">COM-000001</td><td>จ.อ. สมชาย ใจดี</td><td>จ.อ. วีระ พงษ์ทอง</td><td>18/08/69</td><td><span class="tag tag-ASSIGNED">COMPLETED</span></td></tr>
+            <tr><td class="code">TRF-2569-000020</td><td class="code">COM-000014</td><td>ศคว.</td><td>ฝสส.</td><td>10/08/69</td><td><span class="tag tag-ASSIGNED">COMPLETED</span></td></tr>
+            <tr><td class="code">TRF-2569-000019</td><td class="code">COM-000007</td><td>ร.ต. อรุณ ศรีสุข</td><td>จ.ท. ปรีชา บุญมี</td><td>05/08/69</td><td><span class="tag tag-BORROWED">PENDING APPROVAL</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/* ============ DISPOSAL ============ */
+function renderDisposal(){
+  const list = ASSETS.filter(a=>a.status==='DISPOSAL' || a.status==='DISPOSED');
+  return `
+    <div class="demo-note" style="max-width:620px;">หลักการสำคัญ: ห้ามลบ Asset ออกจากฐานข้อมูล — เมื่อกด "ส่งจำหน่ายอุปกรณ์" จากหน้ารายละเอียด สถานะจะเปลี่ยนเป็น <b class="mono">DISPOSAL</b> (รอยืนยัน) เท่านั้น สามารถกด "ย้อนกลับ" ได้จนกว่าจะกดยืนยันจำหน่ายถาวร</div>
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-head"><h3>รายการรอจำหน่าย / จำหน่ายแล้ว</h3></div>
+      <div class="panel-body" style="padding:0;">
+        <table>
+          <thead><tr><th>Asset Code</th><th>รุ่น / ประเภท</th><th>หน่วย / ผู้ครอบครองเดิม</th><th>สถานะก่อนจำหน่าย</th><th>สถานะปัจจุบัน</th><th></th></tr></thead>
+          <tbody>
+            ${list.length ? list.map(a=>`
+              <tr>
+                <td class="code">${a.code}</td>
+                <td>${a.model}<br><span style="color:var(--ink-soft);font-size:11.5px;">${a.cat}</span></td>
+                <td>${a.unit} / ${a.holder}</td>
+                <td>${a._prevStatus ? `<span class="tag tag-${a._prevStatus}">${a._prevStatus}</span>` : '<span style="color:var(--ink-soft);">-</span>'}</td>
+                <td><span class="tag tag-${a.status}">${a.status}</span></td>
+                <td>
+                  ${a.status==='DISPOSAL' ? `
+                    <button class="link-btn" onclick="undoDisposal('${a.code}')">← ย้อนกลับ</button>
+                    &nbsp;·&nbsp;
+                    <button class="link-btn" style="color:var(--red-500);" onclick="finalizeDisposal('${a.code}')">ยืนยันจำหน่ายถาวร</button>
+                  ` : `<span style="color:var(--ink-soft);font-size:12px;">จำหน่ายแล้ว (ถาวร)</span>`}
+                </td>
+              </tr>`).join('') : `<tr class="empty-row"><td colspan="6">ยังไม่มีอุปกรณ์ในรายการจำหน่าย — ส่งอุปกรณ์เข้ามาได้จากหน้ารายละเอียดอุปกรณ์ในทะเบียน</td></tr>`}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function undoDisposal(code){
+  const a = ASSETS.find(x=>x.code===code);
+  if(!a || a.status!=='DISPOSAL') return;
+  a.status = a._prevStatus || 'ASSIGNED';
+  delete a._prevStatus;
+  goTo('disposal');
+  showToast(`ย้อนกลับ ${code} เรียบร้อย — สถานะกลับเป็น ${a.status}`);
+}
+
+function finalizeDisposal(code){
+  const a = ASSETS.find(x=>x.code===code);
+  if(!a || a.status!=='DISPOSAL') return;
+  showConfirm(
+    `ยืนยันจำหน่าย ${code} ถาวร?\n\nการดำเนินการนี้ไม่สามารถย้อนกลับได้ (Asset ยังคงอยู่ในฐานข้อมูลเพื่อประวัติ แต่จะไม่สามารถใช้งานต่อได้อีก)`,
+    ()=>{
+      a.status = 'DISPOSED';
+      delete a._prevStatus;
+      goTo('disposal');
+      showToast(`จำหน่าย ${code} ถาวรเรียบร้อยแล้ว`);
+    },
+    {title:'ยืนยันจำหน่ายถาวร', okLabel:'จำหน่ายถาวร', danger:true}
+  );
+}
+const PLACEHOLDER_INFO = {
+  receive:{icon:'↧', desc:'สร้างใบรับ → เพิ่มรายการ → ระบุ S/N → ตรวจรับ → สร้าง Asset Code → สร้าง QR → status = IN_STOCK'},
+  issue:{icon:'↥', desc:'สร้างใบเบิก → เลือกอุปกรณ์ → เสนอ → อนุมัติ → จ่าย → ผู้รับยืนยัน → COMPLETED (IN_STOCK → ASSIGNED)'},
+  custody:{icon:'◐', desc:'ค้นหา "อุปกรณ์ที่อยู่กับบุคคลนี้ทั้งหมด" หรือ "อุปกรณ์ของหน่วยนี้ทั้งหมด" แบบ real-time'},
+  repair:{icon:'✚', desc:'พบชำรุด → แจ้งซ่อม → ตรวจสอบ → อนุมัติ → ส่งซ่อม → ซ่อม → รับกลับ → ตรวจรับ → กลับใช้งาน'},
+  inspection:{icon:'✓', desc:'สร้างรอบตรวจ → ตรวจแต่ละรายการ (พบ/สภาพ/สถานที่/ผู้ครอบครอง) → สรุปยอดอัตโนมัติ'},
+  reports:{icon:'▦', desc:'ทะเบียนอุปกรณ์, รายงานตามหน่วย/ผู้ครอบครอง, รับเข้า, เบิกจ่าย, โอน, ยืม-คืน, ซ่อม, ชำรุด, ตรวจสอบ, สูญหาย, จำหน่าย, ประวัติ Asset — Export PDF/Excel'},
+  admin:{icon:'⚙', desc:'User / Role / Permission, หน่วย, สถานที่, Audit Log (WHO+WHEN+WHAT+WHY+DOCUMENT), Backup History, ตั้งค่าชื่อสถานะ'},
+};
+function renderPlaceholder(page){
+  const info = PLACEHOLDER_INFO[page] || {icon:'▤', desc:''};
+  return `
+    <div class="panel">
+      <div class="placeholder">
+        <div class="big">${info.icon}</div>
+        <h4>โมดูลนี้อยู่ในขอบเขต V1 — รอ Implement ตาม Workflow ที่ล็อกไว้แล้ว</h4>
+        <p style="max-width:520px;margin:0 auto;color:var(--ink-soft);">${info.desc}</p>
+        <div class="demo-note" style="display:inline-block;text-align:left;margin-top:16px;">ดู Workflow และ API endpoint ฉบับเต็มในเอกสาร <b>CAMS-System-Design.md</b></div>
+      </div>
+    </div>`;
+}
+
+/* ============ ATTACHMENTS ============ */
+const ATTACHMENTS = {
+  'COM-000001': [
+    {name:'ใบตรวจรับ_REC-2567-000045.jpg', type:'application/octet-stream', url:null, date:'12/03/67', by:'ADMIN01'},
+    {name:'สภาพเครื่องหลังซ่อม.jpg', type:'application/octet-stream', url:null, date:'02/10/68', by:'OFFICER01'},
+  ]
+};
+let currentAssetCode = null;
+
+/* ============ ASSET DETAIL MODAL ============ */
+function openAsset(code){
+  currentAssetCode = code;
+  const a = ASSETS.find(x=>x.code===code);
+  const hist = HISTORY[code] || [{d:'-', t:'ยังไม่มีประวัติในข้อมูลจำลอง', who:'-', doc:'-'}];
+  document.getElementById('assetModalBody').innerHTML = `
+    <div class="detail-grid">
+      <div>
+        <div class="kv"><b>Asset Code</b><span class="code">${a.code}</span></div>
+        <div class="kv"><b>รุ่น</b><span>${a.model}</span></div>
+        <div class="kv"><b>ประเภท</b><span>${a.cat}</span></div>
+        <div class="kv"><b>S/N</b><span class="mono">${a.sn}</span></div>
+        <div class="kv"><b>สถานะ</b><span><span class="tag tag-${a.status}">${a.status}</span></span></div>
+        <div class="kv"><b>หน่วย</b><span>${a.unit}</span></div>
+        <div class="kv"><b>ผู้ครอบครอง</b><span>${a.holder}</span></div>
+        <div class="kv"><b>สถานที่</b><span>${a.loc}</span></div>
+        <div class="kv"><b>วันที่รับเข้า</b><span>${a.received}</span></div>
+        <div class="kv"><b>หมดประกัน</b><span>${a.warranty}</span></div>
+      </div>
+      <div class="qr-box">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <rect width="100" height="100" fill="white"/>
+          ${qrPattern()}
+        </svg>
+        <span class="code">${a.code}</span>
+      </div>
+    </div>
+
+    <div class="section-head"><h3>เอกสารแนบ (Attachments)</h3></div>
+    <div class="attach-hint">แนบรูปภาพหรือเอกสารประกอบได้ไม่จำกัดจำนวนและไม่จำกัดขนาดไฟล์ — เช่น ภาพสภาพอุปกรณ์, ใบตรวจรับ, ใบส่งซ่อม</div>
+    <div class="attach-grid" id="attachGrid"></div>
+
+    <div class="section-head"><h3>ประวัติ (Life History)</h3></div>
+    <div class="timeline" style="margin-top:14px;">
+      ${hist.map(h=>`<div class="tl-item"><div class="tl-title">${h.t}</div><div class="tl-meta">${h.d} · ${h.who} · <span class="code">${h.doc}</span></div></div>`).join('')}
+    </div>
+  `;
+  renderAttachGrid();
+  document.getElementById('assetModalFoot').innerHTML = disposalButtonHtml(a);
+  openModal('assetModal');
+}
+
+function disposalButtonHtml(a){
+  if(a.status==='DISPOSED'){
+    return `<span style="font-size:12.5px;color:var(--ink-soft);margin-right:auto;">จำหน่ายแล้ว (ถาวร) — ไม่สามารถแก้ไขได้</span>
+            <button class="btn btn-outline" onclick="closeModal('assetModal')">ปิด</button>`;
+  }
+  if(a.status==='DISPOSAL'){
+    return `<span style="font-size:12.5px;color:var(--amber-500);margin-right:auto;">อยู่ระหว่างรอจำหน่าย — ไปที่หน้า "จำหน่าย" เพื่อยืนยันหรือย้อนกลับ</span>
+            <button class="btn btn-outline" onclick="closeModal('assetModal')">ปิด</button>`;
+  }
+  return `
+    <button class="btn btn-outline" style="border-color:var(--red-500);color:var(--red-500);" onclick="sendToDisposal('${a.code}')">ส่งจำหน่ายอุปกรณ์</button>
+    <button class="btn btn-outline" onclick="closeModal('assetModal')">ปิด</button>`;
+}
+
+function sendToDisposal(code){
+  const a = ASSETS.find(x=>x.code===code);
+  if(!a || a.status==='DISPOSAL' || a.status==='DISPOSED') return;
+  showConfirm(
+    `ยืนยันส่ง ${code} (${a.model}) เข้าสู่กระบวนการจำหน่าย?\n\nสถานะปัจจุบัน "${a.status}" จะถูกบันทึกไว้ เพื่อให้ย้อนกลับได้หากกดผิดพลาด`,
+    ()=>{
+      a._prevStatus = a.status;
+      a.status = 'DISPOSAL';
+      closeModal('assetModal');
+      goTo('disposal');
+      showToast(`ย้าย ${code} ไปยังรายการ "จำหน่าย" แล้ว — สถานะ: DISPOSAL (รอยืนยัน)`);
+    },
+    {title:'ส่งจำหน่ายอุปกรณ์', okLabel:'ยืนยันส่งจำหน่าย', danger:true}
+  );
+}
+
+function renderAttachGrid(){
+  const grid = document.getElementById('attachGrid');
+  if(!grid) return;
+  const list = ATTACHMENTS[currentAssetCode] || [];
+  grid.innerHTML = `
+    <div class="attach-add" onclick="document.getElementById('attachFileInput').click()">
+      <div class="plus">+</div>
+      <div>แนบเอกสาร</div>
+    </div>
+    ${list.map((f,i)=>{
+      const isImg = f.type && f.type.startsWith('image/');
+      return `
+        <div class="attach-item" onclick="${isImg ? `openLightbox(${i})` : 'return false'}">
+          <button class="attach-remove" onclick="event.stopPropagation();removeAttachment(${i})" title="ลบไฟล์นี้">✕</button>
+          ${isImg
+            ? `<img src="${f.url}" alt="${f.name}">`
+            : `<div class="file-ic">📄</div>`}
+          <div class="attach-caption">${f.name}<br>${f.date} · ${f.by}</div>
+        </div>`;
+    }).join('') || ''}
+  `;
+}
+
+function handleAttachFiles(event){
+  const files = Array.from(event.target.files || []);
+  if(!files.length || !currentAssetCode) return;
+  if(!ATTACHMENTS[currentAssetCode]) ATTACHMENTS[currentAssetCode] = [];
+
+  const today = new Date().toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'2-digit'});
+  let pending = files.length;
+
+  files.forEach(file=>{
+    const record = {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      url: null,
+      date: today,
+      by: document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน'
+    };
+    if(file.type && file.type.startsWith('image/')){
+      const reader = new FileReader();
+      reader.onload = e=>{
+        record.url = e.target.result;      // no size limit imposed — full-resolution data URL kept in memory
+        ATTACHMENTS[currentAssetCode].push(record);
+        pending--;
+        if(pending===0) renderAttachGrid();
+      };
+      reader.readAsDataURL(file);
+    } else {
+      ATTACHMENTS[currentAssetCode].push(record);
+      pending--;
+      if(pending===0) renderAttachGrid();
+    }
+  });
+
+  // allow selecting the same file again later
+  event.target.value = '';
+}
+
+function removeAttachment(index){
+  if(!currentAssetCode) return;
+  ATTACHMENTS[currentAssetCode].splice(index,1);
+  renderAttachGrid();
+}
+
+function openLightbox(index){
+  const f = (ATTACHMENTS[currentAssetCode]||[])[index];
+  if(!f || !f.url) return;
+  document.getElementById('lightboxImg').src = f.url;
+  document.getElementById('lightboxCap').textContent = `${f.name} · แนบเมื่อ ${f.date} โดย ${f.by}`;
+  document.getElementById('lightbox').classList.add('show');
+}
+function closeLightbox(){
+  document.getElementById('lightbox').classList.remove('show');
+}
+
+function qrPattern(){
+  // simple deterministic-looking pseudo QR grid for visual mockup only
+  let cells='';
+  const seed=[1,1,1,0,1,0,1,1,0,1,1,0,0,1,1,0,1,0,1,1,1,0,1,1,0,1,1,0,1,0,0,1,1,0,1,1,0,1,0,1,1,1,0,1,1,0,1,1,0,1];
+  let i=0;
+  for(let y=0;y<10;y++){for(let x=0;x<10;x++){
+    const on = (x<3&&y<3)||(x>6&&y<3)||(x<3&&y>6) ? 1 : seed[i%seed.length];
+    i++;
+    if(on) cells+=`<rect x="${x*10}" y="${y*10}" width="9" height="9" fill="#0b1f3a"/>`;
+  }}
+  return cells;
+}
+
+/* ============ TRANSFER SUBMIT ============ */
+function submitTransfer(){
+  closeModal('transferModal');
+  showToast('ส่งคำขอโอนอุปกรณ์เรียบร้อย — รอ APPROVER อนุมัติ (เอกสาร TRF-2569-000021)');
+}
+
+/* ============ MODAL HELPERS ============ */
+function openModal(id){document.getElementById(id).classList.add('show');}
+function closeModal(id){document.getElementById(id).classList.remove('show');}
+document.querySelectorAll('.modal-backdrop').forEach(m=>{
+  m.addEventListener('click', e=>{ if(e.target===m) m.classList.remove('show'); });
+});
+
+/* Custom confirm dialog — native confirm()/alert() can be blocked inside sandboxed artifact iframes */
+function showConfirm(message, onConfirm, opts={}){
+  document.getElementById('confirmTitle').textContent = opts.title || 'ยืนยันการทำรายการ';
+  document.getElementById('confirmBody').textContent = message;
+  const okBtn = document.getElementById('confirmOkBtn');
+  okBtn.textContent = opts.okLabel || 'ยืนยัน';
+  okBtn.style.background = opts.danger ? 'var(--red-500)' : 'var(--navy-900)';
+  okBtn.onclick = ()=>{ closeModal('confirmModal'); onConfirm(); };
+  openModal('confirmModal');
+}
+
+function showToast(message){
+  let t = document.getElementById('toast');
+  t.textContent = message;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), 3400);
+}
+</script>
+</body>
+</html>
