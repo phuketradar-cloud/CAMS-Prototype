@@ -535,7 +535,7 @@ function stateDocRef(){ return cloudDb.collection('cams').doc('state'); }
    (ใช้โปรเจกต์ GCP เดียวกับ Firebase) — เปิดใช้ "Google Drive API", ตั้งค่า OAuth consent screen
    (External + Testing, เพิ่มอีเมลผู้ใช้งานเป็น Test user), สร้าง OAuth client ID ชนิด Web application,
    ใส่ Authorized JavaScript origins เป็นโดเมนที่ deploy จริง แล้วนำ Client ID มาแทนค่า placeholder ด้านล่าง */
-const GOOGLE_DRIVE_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+const GOOGLE_DRIVE_CLIENT_ID = "735160159567-ogfr35o0008mt32lviob9if2dg8urnpu.apps.googleusercontent.com";
 const DRIVE_ENABLED = GOOGLE_DRIVE_CLIENT_ID !== "YOUR_CLIENT_ID.apps.googleusercontent.com";
 let driveAccessToken = null;
 let driveFolderId = null;
