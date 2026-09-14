@@ -8,6 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
 <style>
   :root{
     --navy-900:#0b1f3a;
@@ -516,11 +517,13 @@ const FIREBASE_CONFIG = {
 };
 const CLOUD_ENABLED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
 let cloudDb = null;
+let cloudStorage = null;
 let CLOUD_READY = false;
 if(CLOUD_ENABLED){
   try{
     firebase.initializeApp(FIREBASE_CONFIG);
     cloudDb = firebase.firestore();
+    cloudStorage = firebase.storage();
     CLOUD_READY = true;
   }catch(e){
     /* SDK อาจโหลดไม่สำเร็จ (เครือข่ายบล็อก gstatic.com เป็นต้น) — อย่าให้ทั้งแอปพังตาม ทำงาน local-only แทน */
@@ -528,13 +531,21 @@ if(CLOUD_ENABLED){
   }
 }
 function stateDocRef(){ return cloudDb.collection('cams').doc('state'); }
+/* อัปโหลดไฟล์ขึ้น Firebase Storage แล้วคืน URL ถาวร — เก็บเฉพาะ URL (string สั้นๆ) ไว้ใน Firestore
+   แทนที่จะฝัง base64 เต็มไฟล์ตรงๆ (จะชนขีดจำกัดเอกสาร Firestore ที่ 1MB ได้ง่ายมากถ้าเป็นรูปความละเอียดสูง) */
+async function uploadFileToCloud(file, pathPrefix){
+  const path = `attachments/${pathPrefix}/${Date.now()}_${file.name}`;
+  const ref = cloudStorage.ref().child(path);
+  await ref.put(file);
+  return ref.getDownloadURL();
+}
 
 function collectState(){
   return {
     assets: ASSETS, receiveDocs: RECEIVE_DOCS, issueDocs: ISSUE_DOCS, repairs: REPAIRS,
     inspections: INSPECTIONS, borrows: BORROWS, auditLogs: AUDIT_LOGS, backups: BACKUPS,
     usersList: USERS_LIST, statusNames: STATUS_NAMES, assetNumberHistory: ASSET_NUMBER_HISTORY,
-    repairSeq, inspectionSeq, updatedAt: new Date().toISOString(),
+    attachments: ATTACHMENTS, repairSeq, inspectionSeq, updatedAt: new Date().toISOString(),
   };
 }
 function applyState(data){
@@ -546,6 +557,8 @@ function applyState(data){
   replaceArr(ASSET_NUMBER_HISTORY, data.assetNumberHistory);
   Object.keys(STATUS_NAMES).forEach(k=>delete STATUS_NAMES[k]);
   Object.assign(STATUS_NAMES, data.statusNames||{});
+  Object.keys(ATTACHMENTS).forEach(k=>delete ATTACHMENTS[k]);
+  Object.assign(ATTACHMENTS, data.attachments||{});
   if(data.repairSeq) repairSeq = data.repairSeq;
   if(data.inspectionSeq) inspectionSeq = data.inspectionSeq;
 }
@@ -1000,8 +1013,10 @@ function renderReceiveTbody(){
     : `<tr class="empty-row"><td colspan="5">ยังไม่มีรายการรับเข้า</td></tr>`;
 }
 let receiveAttachments = [];
+let receiveSessionId = null;
 function openReceiveForm(){
   receiveAttachments = [];
+  receiveSessionId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   showFormModal({
     title:'สร้างใบรับอุปกรณ์ใหม่ (RECEIVE)',
     okLabel:'บันทึกรับเข้า',
@@ -1073,24 +1088,42 @@ function renderReceiveAttachGrid(){
 function handleReceiveAttachFiles(event){
   const files = Array.from(event.target.files || []);
   if(!files.length) return;
-  let pending = files.length;
-  files.forEach(file=>{
-    const record = {name:file.name, type:file.type, size:file.size, url:null};
-    if(file.type && file.type.startsWith('image/')){
-      const reader = new FileReader();
-      reader.onload = e=>{
-        record.url = e.target.result;
+
+  const today = todayThai();
+  const by = document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน';
+
+  if(CLOUD_READY){
+    showToast(`กำลังอัปโหลด ${files.length} ไฟล์ขึ้น cloud...`);
+    files.forEach(async file=>{
+      try{
+        const url = await uploadFileToCloud(file, receiveSessionId);
+        receiveAttachments.push({name:file.name, type:file.type, size:file.size, url, date:today, by});
+        renderReceiveAttachGrid();
+      }catch(e){
+        console.error('อัปโหลดไฟล์ไม่สำเร็จ', e);
+        showToast(`อัปโหลด "${file.name}" ไม่สำเร็จ`);
+      }
+    });
+  } else {
+    let pending = files.length;
+    files.forEach(file=>{
+      const record = {name:file.name, type:file.type, size:file.size, url:null, date:today, by};
+      if(file.type && file.type.startsWith('image/')){
+        const reader = new FileReader();
+        reader.onload = e=>{
+          record.url = e.target.result;
+          receiveAttachments.push(record);
+          pending--;
+          if(pending===0) renderReceiveAttachGrid();
+        };
+        reader.readAsDataURL(file);
+      } else {
         receiveAttachments.push(record);
         pending--;
         if(pending===0) renderReceiveAttachGrid();
-      };
-      reader.readAsDataURL(file);
-    } else {
-      receiveAttachments.push(record);
-      pending--;
-      if(pending===0) renderReceiveAttachGrid();
-    }
-  });
+      }
+    });
+  }
   event.target.value = '';
 }
 function removeReceiveAttachment(index){
@@ -1608,32 +1641,42 @@ function handleAttachFiles(event){
   if(!ATTACHMENTS[currentAssetCode]) ATTACHMENTS[currentAssetCode] = [];
 
   const today = todayThai();
-  let pending = files.length;
+  const by = document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน';
 
-  files.forEach(file=>{
-    const record = {
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      url: null,
-      date: today,
-      by: document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน'
-    };
-    if(file.type && file.type.startsWith('image/')){
-      const reader = new FileReader();
-      reader.onload = e=>{
-        record.url = e.target.result;      // no size limit imposed — full-resolution data URL kept in memory
+  if(CLOUD_READY){
+    showToast(`กำลังอัปโหลด ${files.length} ไฟล์ขึ้น cloud...`);
+    files.forEach(async file=>{
+      try{
+        const url = await uploadFileToCloud(file, currentAssetCode);
+        ATTACHMENTS[currentAssetCode].push({name:file.name, type:file.type, size:file.size, url, date:today, by});
+        renderAttachGrid();
+        persistState();
+      }catch(e){
+        console.error('อัปโหลดไฟล์ไม่สำเร็จ', e);
+        showToast(`อัปโหลด "${file.name}" ไม่สำเร็จ`);
+      }
+    });
+  } else {
+    // local-only fallback (ไม่ได้เชื่อม cloud) — เก็บเป็น data URL ในหน่วยความจำ ไม่ถูกบันทึกถาวร
+    let pending = files.length;
+    files.forEach(file=>{
+      const record = {name:file.name, type:file.type, size:file.size, url:null, date:today, by};
+      if(file.type && file.type.startsWith('image/')){
+        const reader = new FileReader();
+        reader.onload = e=>{
+          record.url = e.target.result;
+          ATTACHMENTS[currentAssetCode].push(record);
+          pending--;
+          if(pending===0) renderAttachGrid();
+        };
+        reader.readAsDataURL(file);
+      } else {
         ATTACHMENTS[currentAssetCode].push(record);
         pending--;
         if(pending===0) renderAttachGrid();
-      };
-      reader.readAsDataURL(file);
-    } else {
-      ATTACHMENTS[currentAssetCode].push(record);
-      pending--;
-      if(pending===0) renderAttachGrid();
-    }
-  });
+      }
+    });
+  }
 
   // allow selecting the same file again later
   event.target.value = '';
@@ -1643,6 +1686,7 @@ function removeAttachment(index){
   if(!currentAssetCode) return;
   ATTACHMENTS[currentAssetCode].splice(index,1);
   renderAttachGrid();
+  persistState();
 }
 
 function openLightbox(index){
