@@ -516,9 +516,16 @@ const FIREBASE_CONFIG = {
 };
 const CLOUD_ENABLED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
 let cloudDb = null;
+let CLOUD_READY = false;
 if(CLOUD_ENABLED){
-  firebase.initializeApp(FIREBASE_CONFIG);
-  cloudDb = firebase.firestore();
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    cloudDb = firebase.firestore();
+    CLOUD_READY = true;
+  }catch(e){
+    /* SDK อาจโหลดไม่สำเร็จ (เครือข่ายบล็อก gstatic.com เป็นต้น) — อย่าให้ทั้งแอปพังตาม ทำงาน local-only แทน */
+    console.error('เริ่มต้นการเชื่อมต่อ cloud ไม่สำเร็จ — ทำงานแบบ local-only', e);
+  }
 }
 function stateDocRef(){ return cloudDb.collection('cams').doc('state'); }
 
@@ -543,7 +550,7 @@ function applyState(data){
   if(data.inspectionSeq) inspectionSeq = data.inspectionSeq;
 }
 async function loadStateFromCloud(){
-  if(!CLOUD_ENABLED) return;
+  if(!CLOUD_READY) return;
   try{
     const snap = await stateDocRef().get();
     if(snap.exists) applyState(snap.data());
@@ -555,7 +562,7 @@ async function loadStateFromCloud(){
   }
 }
 function persistState(){
-  if(!CLOUD_ENABLED) return;
+  if(!CLOUD_READY) return;
   stateDocRef().set(collectState()).catch(e=>{
     console.error('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ', e);
     showToast('บันทึกข้อมูลขึ้น cloud ไม่สำเร็จ — ตรวจสอบการเชื่อมต่อ');
@@ -992,7 +999,9 @@ function renderReceiveTbody(){
     <td><span class="tag tag-ASSIGNED">${d.status}</span></td></tr>`).join('')
     : `<tr class="empty-row"><td colspan="5">ยังไม่มีรายการรับเข้า</td></tr>`;
 }
+let receiveAttachments = [];
 function openReceiveForm(){
+  receiveAttachments = [];
   showFormModal({
     title:'สร้างใบรับอุปกรณ์ใหม่ (RECEIVE)',
     okLabel:'บันทึกรับเข้า',
@@ -1013,6 +1022,11 @@ function openReceiveForm(){
           <select id="recUnit">${UNITS.map(u=>`<option>${u}</option>`).join('')}</select></div>
       </div>
       <div class="field"><label>หมายเหตุ</label><input type="text" id="recRemark" placeholder="เช่น จัดซื้อตามสัญญาเลขที่..."></div>
+      <div class="field">
+        <label>เอกสารแนบ (รูปภาพ/ไฟล์ — แนบได้ไม่จำกัดจำนวน)</label>
+        <div class="attach-grid" id="recAttachGrid" style="margin-top:8px;"></div>
+        <input type="file" id="recAttachFileInput" multiple accept="image/*,.pdf,.doc,.docx" style="display:none;" onchange="handleReceiveAttachFiles(event)">
+      </div>
     `,
     onSubmit:()=>{
       const sn = document.getElementById('recSn').value.trim();
@@ -1025,6 +1039,7 @@ function openReceiveForm(){
       const code = assetNumber;
       if(!ASSET_NUMBER_HISTORY.includes(assetNumber)) ASSET_NUMBER_HISTORY.push(assetNumber);
       ASSETS.push({code, model, cat:'อุปกรณ์รับเข้าใหม่', sn, status:'IN_STOCK', unit, holder:'-', loc:LOCATIONS_BY_UNIT[unit]||'คลังอุปกรณ์', received:date, warranty:'-'});
+      if(receiveAttachments.length) ATTACHMENTS[code] = receiveAttachments.slice();
       const docNo = `REC-2569-${String(RECEIVE_DOCS.length+45).padStart(6,'0')}`;
       RECEIVE_DOCS.push({doc:docNo, date, items:1, by:'OFFICER01', status:'COMPLETED'});
       closeModal('formModal');
@@ -1033,6 +1048,61 @@ function openReceiveForm(){
       showToast(`รับเข้าอุปกรณ์ ${code} เรียบร้อย — เอกสาร ${docNo}`);
     }
   });
+  renderReceiveAttachGrid();
+}
+
+function renderReceiveAttachGrid(){
+  const grid = document.getElementById('recAttachGrid');
+  if(!grid) return;
+  grid.innerHTML = `
+    <div class="attach-add" onclick="document.getElementById('recAttachFileInput').click()">
+      <div class="plus">+</div>
+      <div>แนบเอกสาร</div>
+    </div>
+    ${receiveAttachments.map((f,i)=>{
+      const isImg = f.type && f.type.startsWith('image/');
+      return `
+        <div class="attach-item" onclick="${isImg ? `openReceiveLightbox(${i})` : 'return false'}">
+          <button class="attach-remove" onclick="event.stopPropagation();removeReceiveAttachment(${i})" title="ลบไฟล์นี้">✕</button>
+          ${isImg ? `<img src="${f.url}" alt="${f.name}">` : `<div class="file-ic">📄</div>`}
+          <div class="attach-caption">${f.name}</div>
+        </div>`;
+    }).join('')}
+  `;
+}
+function handleReceiveAttachFiles(event){
+  const files = Array.from(event.target.files || []);
+  if(!files.length) return;
+  let pending = files.length;
+  files.forEach(file=>{
+    const record = {name:file.name, type:file.type, size:file.size, url:null};
+    if(file.type && file.type.startsWith('image/')){
+      const reader = new FileReader();
+      reader.onload = e=>{
+        record.url = e.target.result;
+        receiveAttachments.push(record);
+        pending--;
+        if(pending===0) renderReceiveAttachGrid();
+      };
+      reader.readAsDataURL(file);
+    } else {
+      receiveAttachments.push(record);
+      pending--;
+      if(pending===0) renderReceiveAttachGrid();
+    }
+  });
+  event.target.value = '';
+}
+function removeReceiveAttachment(index){
+  receiveAttachments.splice(index,1);
+  renderReceiveAttachGrid();
+}
+function openReceiveLightbox(index){
+  const f = receiveAttachments[index];
+  if(!f || !f.url) return;
+  document.getElementById('lightboxImg').src = f.url;
+  document.getElementById('lightboxCap').textContent = f.name;
+  document.getElementById('lightbox').classList.add('show');
 }
 
 /* ============ เบิกจ่าย (ISSUE) ============ */
