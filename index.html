@@ -107,11 +107,13 @@
 
   /* ---------- CARDS / KPI ---------- */
   .kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px;}
-  .kpi{background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:14px 15px;}
-  .kpi .n{font-size:22px;font-weight:700;color:var(--navy-900);font-family:'IBM Plex Mono';}
+  .kpi{
+    background:var(--paper);border:1px solid var(--line);border-left:4px solid var(--kpi-accent, var(--steel-500));
+    border-radius:4px;padding:14px 15px;cursor:pointer;transition:.15s;
+  }
+  .kpi:hover{box-shadow:0 4px 14px rgba(11,31,58,.1);transform:translateY(-1px);}
+  .kpi .n{font-size:22px;font-weight:700;color:var(--kpi-accent, var(--navy-900));font-family:'IBM Plex Mono';}
   .kpi .l{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
-  .kpi.warn .n{color:var(--amber-500);}
-  .kpi.bad .n{color:var(--red-500);}
 
   .panel{background:var(--paper);border:1px solid var(--line);border-radius:4px;margin-bottom:20px;}
   .panel-head{padding:13px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;}
@@ -573,12 +575,17 @@ function goTo(page){
 /* ============ DASHBOARD ============ */
 function renderDashboard(){
   const kpis = [
-    {n:'1,245', l:'อุปกรณ์ทั้งหมด'}, {n:'982', l:'ใช้งาน (ASSIGNED)'}, {n:'126', l:'ในคลัง (IN_STOCK)'},
-    {n:'42', l:'ยืมอยู่', warn:1}, {n:'61', l:'ส่งซ่อม', warn:1}, {n:'21', l:'ชำรุด/สูญหาย', bad:1},
+    {n:'1,245', l:'อุปกรณ์ทั้งหมด', color:'#0b1f3a', onclick:"kpiGoto('')"},
+    {n:'982', l:'ใช้งาน (ASSIGNED)', color:'#1b3a66', onclick:"kpiGoto('ASSIGNED')"},
+    {n:'126', l:'ในคลัง (IN_STOCK)', color:'#3b6ea5', onclick:"kpiGoto('IN_STOCK')"},
+    {n:'42', l:'ยืมอยู่', color:'#c9822c', onclick:"goTo('borrow')"},
+    {n:'61', l:'ส่งซ่อม', color:'#c0632c', onclick:"goTo('repair')"},
+    {n:'21', l:'ชำรุด/สูญหาย', color:'#b3432b', onclick:"kpiGoto('DAMAGED,LOST')"},
   ];
   return `
     <div class="kpi-row">
-      ${kpis.map(k=>`<div class="kpi ${k.warn?'warn':''} ${k.bad?'bad':''}"><div class="n">${k.n}</div><div class="l">${k.l}</div></div>`).join('')}
+      ${kpis.map(k=>`<div class="kpi" style="--kpi-accent:${k.color};" onclick="${k.onclick}" title="ดูรายละเอียด →">
+        <div class="n">${k.n}</div><div class="l">${k.l}</div></div>`).join('')}
     </div>
     <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:20px;">
       <div class="panel">
@@ -618,7 +625,8 @@ function renderRegistry(){
         <option value="">สถานะทั้งหมด</option>
         <option value="IN_STOCK">IN_STOCK</option><option value="ASSIGNED">ASSIGNED</option>
         <option value="BORROWED">BORROWED</option><option value="REPAIR">REPAIR</option>
-        <option value="DAMAGED">DAMAGED</option>
+        <option value="DAMAGED">DAMAGED</option><option value="LOST">LOST</option>
+        <option value="DAMAGED,LOST">DAMAGED + LOST</option>
       </select>
       <select id="registryUnit" onchange="filterRegistry()">
         <option value="">หน่วยทั้งหมด</option>
@@ -662,7 +670,7 @@ function filterRegistry(){
 
   const filtered = ASSETS.filter(a=>{
     const matchesText = !q || [a.code, a.model, a.sn, a.holder, a.cat].join(' ').toLowerCase().includes(q);
-    const matchesStatus = !status || a.status===status;
+    const matchesStatus = !status || status.split(',').includes(a.status);
     const matchesUnit = !unit || a.unit===unit;
     return matchesText && matchesStatus && matchesUnit;
   });
@@ -854,6 +862,11 @@ function finalizeDisposal(code){
   );
 }
 /* ============ SHARED HELPERS ============ */
+function kpiGoto(status){
+  goTo('registry');
+  const sel = document.getElementById('registryStatus');
+  if(sel){ sel.value = status; filterRegistry(); }
+}
 function todayThai(){
   return new Date().toLocaleDateString('th-TH', {day:'2-digit', month:'2-digit', year:'2-digit'});
 }
