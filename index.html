@@ -8,7 +8,7 @@
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --navy-900:#0b1f3a;
@@ -517,13 +517,11 @@ const FIREBASE_CONFIG = {
 };
 const CLOUD_ENABLED = FIREBASE_CONFIG.apiKey !== "YOUR_API_KEY";
 let cloudDb = null;
-let cloudStorage = null;
 let CLOUD_READY = false;
 if(CLOUD_ENABLED){
   try{
     firebase.initializeApp(FIREBASE_CONFIG);
     cloudDb = firebase.firestore();
-    cloudStorage = firebase.storage();
     CLOUD_READY = true;
   }catch(e){
     /* SDK อาจโหลดไม่สำเร็จ (เครือข่ายบล็อก gstatic.com เป็นต้น) — อย่าให้ทั้งแอปพังตาม ทำงาน local-only แทน */
@@ -531,13 +529,67 @@ if(CLOUD_ENABLED){
   }
 }
 function stateDocRef(){ return cloudDb.collection('cams').doc('state'); }
-/* อัปโหลดไฟล์ขึ้น Firebase Storage แล้วคืน URL ถาวร — เก็บเฉพาะ URL (string สั้นๆ) ไว้ใน Firestore
+
+/* ============ ไฟล์แนบ — เก็บไว้บน Google Drive ของหน่วย (ฟรี ไม่ต้องผูกบัตรเครดิตแบบ Firebase Storage) ============ */
+/* ผู้ดูแลระบบต้องสร้าง OAuth Client ID ที่ https://console.cloud.google.com/apis/credentials?project=rtaf-rcc
+   (ใช้โปรเจกต์ GCP เดียวกับ Firebase) — เปิดใช้ "Google Drive API", ตั้งค่า OAuth consent screen
+   (External + Testing, เพิ่มอีเมลผู้ใช้งานเป็น Test user), สร้าง OAuth client ID ชนิด Web application,
+   ใส่ Authorized JavaScript origins เป็นโดเมนที่ deploy จริง แล้วนำ Client ID มาแทนค่า placeholder ด้านล่าง */
+const GOOGLE_DRIVE_CLIENT_ID = "YOUR_CLIENT_ID.apps.googleusercontent.com";
+const DRIVE_ENABLED = GOOGLE_DRIVE_CLIENT_ID !== "YOUR_CLIENT_ID.apps.googleusercontent.com";
+let driveAccessToken = null;
+let driveFolderId = null;
+function ensureDriveAuth(){
+  return new Promise((resolve, reject)=>{
+    if(!DRIVE_ENABLED){ reject(new Error('ยังไม่ได้ตั้งค่า Google Drive Client ID')); return; }
+    if(driveAccessToken){ resolve(driveAccessToken); return; }
+    if(typeof google === 'undefined' || !google.accounts){ reject(new Error('โหลด Google Sign-In ไม่สำเร็จ (เครือข่ายอาจบล็อก accounts.google.com)')); return; }
+    const client = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_DRIVE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      callback: (resp)=>{
+        if(resp.error){ reject(new Error(resp.error)); return; }
+        driveAccessToken = resp.access_token;
+        resolve(driveAccessToken);
+      },
+      error_callback: (err)=> reject(new Error(err.type || 'เข้าสู่ระบบ Google ไม่สำเร็จ')),
+    });
+    client.requestAccessToken();
+  });
+}
+async function ensureDriveFolder(token){
+  if(driveFolderId) return driveFolderId;
+  const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+    method:'POST',
+    headers:{Authorization:`Bearer ${token}`, 'Content-Type':'application/json'},
+    body: JSON.stringify({name:'CAMS Attachments', mimeType:'application/vnd.google-apps.folder'}),
+  });
+  if(!res.ok) throw new Error('สร้างโฟลเดอร์บน Google Drive ไม่สำเร็จ');
+  const data = await res.json();
+  driveFolderId = data.id;
+  persistState(); // เก็บ folderId ไว้ใน Firestore ให้ทุกเครื่อง/ผู้ใช้อัปโหลดเข้าโฟลเดอร์เดียวกัน
+  return driveFolderId;
+}
+/* อัปโหลดไฟล์ขึ้น Google Drive แล้วคืนลิงก์แสดงผล — เก็บเฉพาะลิงก์ (string สั้นๆ) ไว้ใน Firestore
    แทนที่จะฝัง base64 เต็มไฟล์ตรงๆ (จะชนขีดจำกัดเอกสาร Firestore ที่ 1MB ได้ง่ายมากถ้าเป็นรูปความละเอียดสูง) */
-async function uploadFileToCloud(file, pathPrefix){
-  const path = `attachments/${pathPrefix}/${Date.now()}_${file.name}`;
-  const ref = cloudStorage.ref().child(path);
-  await ref.put(file);
-  return ref.getDownloadURL();
+async function uploadFileToCloud(file){
+  const token = await ensureDriveAuth();
+  const folderId = await ensureDriveFolder(token);
+  const metadata = {name: file.name, parents: [folderId]};
+  const form = new FormData();
+  form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+  form.append('file', file);
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method:'POST', headers:{Authorization:`Bearer ${token}`}, body: form,
+  });
+  if(!res.ok) throw new Error('อัปโหลดขึ้น Google Drive ไม่สำเร็จ');
+  const {id} = await res.json();
+  // แชร์แบบ "ทุกคนที่มีลิงก์ดูได้" (read-only) เพื่อให้ฝังแสดงรูปในหน้าเว็บได้โดยไม่ต้องยืนยันตัวตนซ้ำ
+  await fetch(`https://www.googleapis.com/drive/v3/files/${id}/permissions`, {
+    method:'POST', headers:{Authorization:`Bearer ${token}`, 'Content-Type':'application/json'},
+    body: JSON.stringify({role:'reader', type:'anyone'}),
+  });
+  return `https://drive.google.com/thumbnail?id=${id}&sz=w1000`;
 }
 
 function collectState(){
@@ -545,7 +597,7 @@ function collectState(){
     assets: ASSETS, receiveDocs: RECEIVE_DOCS, issueDocs: ISSUE_DOCS, repairs: REPAIRS,
     inspections: INSPECTIONS, borrows: BORROWS, auditLogs: AUDIT_LOGS, backups: BACKUPS,
     usersList: USERS_LIST, statusNames: STATUS_NAMES, assetNumberHistory: ASSET_NUMBER_HISTORY,
-    attachments: ATTACHMENTS, repairSeq, inspectionSeq, updatedAt: new Date().toISOString(),
+    attachments: ATTACHMENTS, driveFolderId, repairSeq, inspectionSeq, updatedAt: new Date().toISOString(),
   };
 }
 function applyState(data){
@@ -559,6 +611,7 @@ function applyState(data){
   Object.assign(STATUS_NAMES, data.statusNames||{});
   Object.keys(ATTACHMENTS).forEach(k=>delete ATTACHMENTS[k]);
   Object.assign(ATTACHMENTS, data.attachments||{});
+  if(data.driveFolderId) driveFolderId = data.driveFolderId;
   if(data.repairSeq) repairSeq = data.repairSeq;
   if(data.inspectionSeq) inspectionSeq = data.inspectionSeq;
 }
@@ -1013,10 +1066,8 @@ function renderReceiveTbody(){
     : `<tr class="empty-row"><td colspan="5">ยังไม่มีรายการรับเข้า</td></tr>`;
 }
 let receiveAttachments = [];
-let receiveSessionId = null;
 function openReceiveForm(){
   receiveAttachments = [];
-  receiveSessionId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
   showFormModal({
     title:'สร้างใบรับอุปกรณ์ใหม่ (RECEIVE)',
     okLabel:'บันทึกรับเข้า',
@@ -1092,16 +1143,16 @@ function handleReceiveAttachFiles(event){
   const today = todayThai();
   const by = document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน';
 
-  if(CLOUD_READY){
-    showToast(`กำลังอัปโหลด ${files.length} ไฟล์ขึ้น cloud...`);
+  if(DRIVE_ENABLED){
+    showToast(`กำลังอัปโหลด ${files.length} ไฟล์ขึ้น Google Drive...`);
     files.forEach(async file=>{
       try{
-        const url = await uploadFileToCloud(file, receiveSessionId);
+        const url = await uploadFileToCloud(file);
         receiveAttachments.push({name:file.name, type:file.type, size:file.size, url, date:today, by});
         renderReceiveAttachGrid();
       }catch(e){
         console.error('อัปโหลดไฟล์ไม่สำเร็จ', e);
-        showToast(`อัปโหลด "${file.name}" ไม่สำเร็จ`);
+        showToast(`อัปโหลด "${file.name}" ไม่สำเร็จ — ${e.message||''}`);
       }
     });
   } else {
@@ -1638,22 +1689,23 @@ function renderAttachGrid(){
 function handleAttachFiles(event){
   const files = Array.from(event.target.files || []);
   if(!files.length || !currentAssetCode) return;
-  if(!ATTACHMENTS[currentAssetCode]) ATTACHMENTS[currentAssetCode] = [];
+  const targetCode = currentAssetCode; // กันกรณีผู้ใช้ปิด/เปลี่ยนไปดูอุปกรณ์ตัวอื่นก่อนอัปโหลดเสร็จ
+  if(!ATTACHMENTS[targetCode]) ATTACHMENTS[targetCode] = [];
 
   const today = todayThai();
   const by = document.getElementById('userName') ? document.getElementById('userName').textContent : 'ผู้ใช้งาน';
 
-  if(CLOUD_READY){
-    showToast(`กำลังอัปโหลด ${files.length} ไฟล์ขึ้น cloud...`);
+  if(DRIVE_ENABLED){
+    showToast(`กำลังอัปโหลด ${files.length} ไฟล์ขึ้น Google Drive...`);
     files.forEach(async file=>{
       try{
-        const url = await uploadFileToCloud(file, currentAssetCode);
-        ATTACHMENTS[currentAssetCode].push({name:file.name, type:file.type, size:file.size, url, date:today, by});
-        renderAttachGrid();
+        const url = await uploadFileToCloud(file);
+        ATTACHMENTS[targetCode].push({name:file.name, type:file.type, size:file.size, url, date:today, by});
+        if(currentAssetCode === targetCode) renderAttachGrid();
         persistState();
       }catch(e){
         console.error('อัปโหลดไฟล์ไม่สำเร็จ', e);
-        showToast(`อัปโหลด "${file.name}" ไม่สำเร็จ`);
+        showToast(`อัปโหลด "${file.name}" ไม่สำเร็จ — ${e.message||''}`);
       }
     });
   } else {
@@ -1665,15 +1717,15 @@ function handleAttachFiles(event){
         const reader = new FileReader();
         reader.onload = e=>{
           record.url = e.target.result;
-          ATTACHMENTS[currentAssetCode].push(record);
+          ATTACHMENTS[targetCode].push(record);
           pending--;
-          if(pending===0) renderAttachGrid();
+          if(pending===0 && currentAssetCode===targetCode) renderAttachGrid();
         };
         reader.readAsDataURL(file);
       } else {
-        ATTACHMENTS[currentAssetCode].push(record);
+        ATTACHMENTS[targetCode].push(record);
         pending--;
-        if(pending===0) renderAttachGrid();
+        if(pending===0 && currentAssetCode===targetCode) renderAttachGrid();
       }
     });
   }
