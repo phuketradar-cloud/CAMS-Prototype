@@ -197,6 +197,13 @@
         <div class="badge" id="sourceInfo">–</div>
       </div>
     </div>
+    <div class="row" style="margin-top:10px;">
+      <label style="display:flex; align-items:center; gap:8px; margin:0;">
+        <input type="checkbox" id="autoSeam" checked style="width:auto;">
+        <span>ค้นหาจุดตัดที่เนียนที่สุดอัตโนมัติ + motion-aware blending (แนะนำ)</span>
+      </label>
+    </div>
+    <div class="hint" style="margin-top:2px;">ค้นหาเฟรมช่วงต้น/ท้ายที่คล้ายกันที่สุดเพื่อตัดต่อ แล้วชดเชยการเคลื่อนไหว (pan/drift) ก่อนผสานภาพ ให้จุดต่อเนียนกว่าการ crossfade แบบตรง ๆ</div>
     <div class="row" style="margin-top:14px;">
       <button id="generateBtn">▶️ สร้างวิดีโอลูป</button>
       <span class="hint">วิดีโอผลลัพธ์ยังไม่มีเสียง (video-only) ในเวอร์ชันนี้</span>
@@ -222,8 +229,11 @@
   <div class="card">
     <details>
       <summary>เกี่ยวกับเครื่องมือนี้ / โจทย์ต้นฉบับ (AI prompt ที่ใช้เป็นแนวทาง)</summary>
-      <p class="hint">เครื่องมือนี้เป็นการประมาณผล (practical approximation) ของโจทย์ด้านล่าง โดยไม่ต้องพึ่ง AI video generation API ภายนอกใด ๆ — ทำงานแบบออฟไลน์ทั้งหมดในเบราว์เซอร์ด้วย HTML5 Canvas โดยใช้เทคนิค frame extraction + crossfade blending ที่จุดต่อรอบ (แทนการสร้างเฟรมใหม่ด้วยโมเดล generative video ตามที่ prompt ระบุไว้ตามตัวอักษร)</p>
+      <p class="hint">เครื่องมือนี้เป็นการประมาณผล (practical approximation) ของโจทย์ด้านล่าง โดยไม่ต้องพึ่ง AI video generation API ภายนอกใด ๆ — ทำงานแบบออฟไลน์ทั้งหมดในเบราว์เซอร์ด้วย HTML5 Canvas โดยใช้เทคนิค frame extraction + การค้นหาจุดตัดที่เนียนที่สุดอัตโนมัติ + motion-aware crossfade blending ที่จุดต่อรอบ (แทนการสร้างเฟรมใหม่ด้วยโมเดล generative video ตามที่ prompt ระบุไว้ตามตัวอักษร — จึงยังมีข้อจำกัดเรื่องความเนียนเมื่อเทียบกับโมเดล AI จริง)</p>
+      <p class="hint"><strong>Prompt ต้นฉบับ:</strong></p>
       <pre id="promptText"></pre>
+      <p class="hint" style="margin-top:12px;"><strong>Prompt ฉบับปรับปรุง (เน้นความเนียนของจุดวนลูป):</strong></p>
+      <pre id="promptTextV2"></pre>
     </details>
   </div>
 
@@ -267,6 +277,31 @@ Make the first frame and final frame naturally connect so the video can play rep
 
 Output: smooth cinematic seamless loop, consistent motion, no flicker, no warping, no frame jump, no visual discontinuity.`;
 document.getElementById('promptText').textContent = ORIGINAL_PROMPT;
+
+const PROMPT_V2 = `Turn this short clip into a perfectly seamless cinematic infinite loop.
+
+Keep the character completely consistent and preserve the original composition.
+
+Only maintain subtle natural movements:
+gentle hair movement, soft fabric movement, slow breathing, occasional natural blinking, and very subtle environmental motion.
+
+Do not change the character's face, pose, body proportions, clothing, background, or camera composition.
+
+Create a seamless transition between the end and beginning of each cycle using motion-aware temporal blending.
+
+No jump cut.
+No freeze frame.
+No sudden movement.
+No duplicated frames.
+No flickering.
+No facial deformation.
+No identity change.
+No camera shake.
+
+The final frame must naturally flow back into the first frame.
+
+The result should look like a single continuous shot that can loop infinitely without the viewer noticing the repetition.`;
+document.getElementById('promptTextV2').textContent = PROMPT_V2;
 
 const dropzone = document.getElementById('dropzone');
 const fileInput = document.getElementById('fileInput');
@@ -364,11 +399,91 @@ async function extractFrames(video, fps, onProgress) {
   return frames;
 }
 
+// --- Seam-finding + motion estimation helpers (motion-aware blending) ---
+
+function thumbLuma(img, tw, th, ctx) {
+  ctx.clearRect(0, 0, tw, th);
+  ctx.drawImage(img, 0, 0, tw, th);
+  const d = ctx.getImageData(0, 0, tw, th).data;
+  const out = new Float32Array(tw * th);
+  for (let p = 0, di = 0; p < tw * th; p++, di += 4) {
+    out[p] = 0.299 * d[di] + 0.587 * d[di + 1] + 0.114 * d[di + 2];
+  }
+  return out;
+}
+
+function diffLuma(a, b) {
+  let s = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = a[i] - b[i];
+    s += d * d;
+  }
+  return s;
+}
+
+function shiftedDiff(a, b, tw, th, dx, dy) {
+  let s = 0, count = 0;
+  for (let y = 0; y < th; y++) {
+    const sy = y + dy;
+    if (sy < 0 || sy >= th) continue;
+    for (let x = 0; x < tw; x++) {
+      const sx = x + dx;
+      if (sx < 0 || sx >= tw) continue;
+      const d = a[y * tw + x] - b[sy * tw + sx];
+      s += d * d;
+      count++;
+    }
+  }
+  return count > 0 ? s / count : Infinity;
+}
+
+// Find (dx, dy) so that `b` translated by (dx, dy) best matches `a`.
+function estimateShift(a, b, tw, th, maxShift) {
+  let best = { dx: 0, dy: 0, score: Infinity };
+  for (let dy = -maxShift; dy <= maxShift; dy++) {
+    for (let dx = -maxShift; dx <= maxShift; dx++) {
+      const score = shiftedDiff(a, b, tw, th, dx, dy);
+      if (score < best.score) best = { dx, dy, score };
+    }
+  }
+  return best;
+}
+
+// Search the head/tail regions of the clip for the pair of frames that are
+// most visually similar, so trimming to that pair produces a naturally
+// smoother cut than always forcing the very first/last captured frame.
+function findBestSeam(frames, maxTrim, tw, th) {
+  const n = frames.length;
+  maxTrim = Math.min(maxTrim, Math.floor(n / 4));
+  if (maxTrim <= 0) return { startTrim: 0, endTrim: 0 };
+
+  const canvas = document.createElement('canvas');
+  canvas.width = tw;
+  canvas.height = th;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  const startThumbs = [];
+  const endThumbs = [];
+  for (let i = 0; i <= maxTrim; i++) startThumbs.push(thumbLuma(frames[i], tw, th, ctx));
+  for (let i = 0; i <= maxTrim; i++) endThumbs.push(thumbLuma(frames[n - 1 - i], tw, th, ctx));
+
+  let best = { startTrim: 0, endTrim: 0, score: Infinity };
+  for (let s = 0; s <= maxTrim; s++) {
+    for (let e = 0; e <= maxTrim; e++) {
+      const score = diffLuma(startThumbs[s], endThumbs[e]);
+      if (score < best.score) best = { startTrim: s, endTrim: e, score };
+    }
+  }
+  return best;
+}
+
 // Build the looped + crossfaded frame sequence.
 // Every loop's tail (last `blendFrames` frames) is blended into the head of
 // the next loop (the final loop wraps back onto the head of frame 0), so the
-// clip can repeat forever without a visible seam.
-function buildLoopedSequence(frames, loopCount, blendFrames) {
+// clip can repeat forever without a visible seam. `motionShift` (optional)
+// translates the incoming frame during the blend to compensate for slow
+// pan/drift between the tail and head, reducing double-exposure ghosting.
+function buildLoopedSequence(frames, loopCount, blendFrames, motionShift) {
   const n = frames.length;
   blendFrames = Math.min(blendFrames, Math.floor(n / 2));
   const canvas = document.createElement('canvas');
@@ -377,18 +492,23 @@ function buildLoopedSequence(frames, loopCount, blendFrames) {
   canvas.height = first.height;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
+  const dxFull = motionShift ? motionShift.dx : 0;
+  const dyFull = motionShift ? motionShift.dy : 0;
+
   const sequence = [];
   for (let loop = 0; loop < loopCount; loop++) {
     for (let i = 0; i < n; i++) {
       const tailStart = n - blendFrames;
       if (blendFrames > 0 && i >= tailStart) {
         const localIdx = i - tailStart; // 0..blendFrames-1
-        const alpha = (localIdx + 1) / (blendFrames + 1); // 0 -> 1, weight toward next loop's start
+        const t = (localIdx + 1) / (blendFrames + 1); // 0 -> 1
+        const alpha = t * t * (3 - 2 * t); // smoothstep easing, gentler than linear
+        const shiftFactor = 1 - alpha; // fully aligned early in the blend, settles to 0 by the end
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.globalAlpha = 1;
         ctx.drawImage(frames[i], 0, 0);
         ctx.globalAlpha = alpha;
-        ctx.drawImage(frames[localIdx], 0, 0);
+        ctx.drawImage(frames[localIdx], dxFull * shiftFactor, dyFull * shiftFactor);
         ctx.globalAlpha = 1;
         sequence.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
       } else {
@@ -456,6 +576,7 @@ async function generateLoop() {
   const loopCount = Math.max(2, Math.min(12, parseInt(document.getElementById('loopCount').value, 10) || 3));
   const blendSeconds = Math.max(0.05, Math.min(3, parseFloat(document.getElementById('blendDuration').value) || 0.5));
   const fps = parseInt(document.getElementById('fps').value, 10) || 30;
+  const autoSeam = document.getElementById('autoSeam').checked;
 
   const video = document.createElement('video');
   video.muted = true;
@@ -467,12 +588,33 @@ async function generateLoop() {
   const blendFrames = Math.max(1, Math.round(blendSeconds * fps));
 
   setProgress(0, 'กำลังแยกเฟรมจากวิดีโอต้นฉบับ...');
-  const frames = await extractFrames(video, fps, (p) => {
-    setProgress(p * 40, `กำลังแยกเฟรม... (${Math.round(p * 100)}%)`);
+  let frames = await extractFrames(video, fps, (p) => {
+    setProgress(p * 30, `กำลังแยกเฟรม... (${Math.round(p * 100)}%)`);
   });
 
-  setProgress(40, 'กำลังผสานรอยต่อระหว่างรอบ (crossfade)...');
-  const sequence = buildLoopedSequence(frames, loopCount, blendFrames);
+  let motionShift = null;
+  if (autoSeam && frames.length > 4) {
+    setProgress(32, 'กำลังค้นหาจุดตัดที่เนียนที่สุด...');
+    const tw = 64;
+    const th = Math.max(1, Math.round((tw * height) / width));
+    const seam = findBestSeam(frames, blendFrames, tw, th);
+    if (seam.startTrim > 0 || seam.endTrim > 0) {
+      frames = frames.slice(seam.startTrim, frames.length - seam.endTrim);
+    }
+
+    setProgress(38, 'กำลังประเมินการเคลื่อนไหวเพื่อชดเชยรอยต่อ...');
+    const canvas = document.createElement('canvas');
+    canvas.width = tw;
+    canvas.height = th;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const tailThumb = thumbLuma(frames[frames.length - 1], tw, th, ctx);
+    const headThumb = thumbLuma(frames[0], tw, th, ctx);
+    const shift = estimateShift(tailThumb, headThumb, tw, th, 6);
+    motionShift = { dx: shift.dx * (width / tw), dy: shift.dy * (height / th) };
+  }
+
+  setProgress(40, 'กำลังผสานรอยต่อระหว่างรอบ (motion-aware crossfade)...');
+  const sequence = buildLoopedSequence(frames, loopCount, blendFrames, motionShift);
   setProgress(55, `เตรียมลำดับเฟรมทั้งหมด ${sequence.length} เฟรม`);
 
   setProgress(55, 'กำลังเข้ารหัสวิดีโอผลลัพธ์...');
